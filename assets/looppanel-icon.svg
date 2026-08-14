@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>LoopPanel</title>
+  <g fill="none" stroke-linecap="round" stroke-width="68">
+    <path d="M105 353A190 190 0 0 1 354 103" stroke="#16bde8"/>
+    <path d="M407 159A190 190 0 0 1 158 409" stroke="#17212b"/>
+  </g>
+  <circle cx="105" cy="353" r="34" fill="#17212b"/>
+  <circle cx="354" cy="103" r="34" fill="#16bde8"/>
+  <rect x="164" y="164" width="184" height="184" rx="42" fill="#17212b"/>
+  <circle cx="304" cy="208" r="14" fill="#f3ad32"/>
+</svg>

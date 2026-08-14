@@ -1,0 +1,16 @@
+* text=auto
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.jinja text eol=lf
+*.svg text eol=lf
+*.p text eol=lf
+*.txt text eol=lf
+*.bin binary
+*.ico binary
+*.png binary
+*.zip binary
+vendor/** -text

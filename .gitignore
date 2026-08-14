@@ -1,0 +1,6 @@
+/target/
+/dist/
+/preview.png
+*.log
+*.pcap
+*.pcapng

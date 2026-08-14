@@ -1,0 +1,49 @@
+[package]
+name = "looppanel"
+version = "0.1.0-rc.2"
+edition = "2024"
+description = "Native, template-driven controller for supported USB LCD panels on Windows"
+license = "MIT"
+autobins = false
+
+[[bin]]
+name = "looppanel"
+path = "src/bin/looppanel.rs"
+
+[[bin]]
+name = "looppanel-temperature-service"
+path = "src/bin/looppanel-temperature-service.rs"
+
+[dependencies]
+anyhow = "1.0"
+image = { version = "0.25.10", default-features = false, features = ["gif", "jpeg", "png"] }
+libloading = "0.9"
+minijinja = { version = "=2.21.0", default-features = false, features = ["builtins", "debug", "serde"] }
+resvg = { version = "=0.47.0", default-features = false, features = ["text"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.9"
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_Audio",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_IO",
+    "Win32_System_Memory",
+    "Win32_System_Pipes",
+    "Win32_System_Registry",
+    "Win32_System_Services",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+panic = "abort"
+strip = true

@@ -1,0 +1,17 @@
+# 随包提供三张原创样例；也可改成自己的 PNG、JPEG 或 GIF。
+background = "samples/aurora-circuit.jpg"
+
+# 背景、模板和相对字体路径均以本配置文件所在目录为基准。
+template = "dashboard.svg.jinja"
+# 默认模板按 Agency FB 调整；也可换成其他本地 TTF/TTC 字体。
+font = 'C:\Windows\Fonts\AGENCYB.TTF'
+title = "LoopPanel"
+custom_lines = []
+
+# GIF 保留原始帧间隔；fps 是 1..30 的动画上限。
+fps = 5
+# 硬件信息采样周期；默认 1 Hz。
+sensor_interval_ms = 1000
+brightness = 0.90
+show_clock = true
+show_sensors = true
