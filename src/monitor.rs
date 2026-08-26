@@ -2,11 +2,15 @@ use std::{ffi::c_void, mem::size_of, ptr, thread, time::Duration};
 
 use libloading::Library;
 
-use crate::{io_metrics::IoMetrics, temperature, win::system_dll};
+use crate::{
+    io_metrics::IoMetrics,
+    temperature,
+    win::{system_dll, wide},
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
-    pub cpu_percent: f32,
+    pub cpu_percent: Option<f32>,
     pub cpu_temperature: Option<u32>,
     pub cpu_p_core_loads: Vec<f32>,
     pub cpu_e_core_loads: Vec<f32>,
@@ -37,6 +41,7 @@ pub struct Monitor {
     power: Option<PowerApi>,
     nvml: Option<Nvml>,
     io: IoMetrics,
+    cpu_utility: Option<CpuUtility>,
 }
 
 impl Monitor {
@@ -54,6 +59,7 @@ impl Monitor {
             power: PowerApi::load(),
             nvml: Nvml::load(),
             io: IoMetrics::new(),
+            cpu_utility: CpuUtility::load(),
         }
     }
 
@@ -63,7 +69,7 @@ impl Monitor {
 
     pub fn sample(&mut self) -> Snapshot {
         let logical_loads = self.sample_cpu_loads();
-        let cpu_percent = average(&logical_loads).unwrap_or(0.0);
+        let cpu_percent = self.cpu_utility.as_ref().and_then(CpuUtility::sample);
         let (cpu_p_core_loads, cpu_e_core_loads) =
             split_core_values(physical_core_averages(&self.cpu_topology, &logical_loads));
 
@@ -295,6 +301,118 @@ fn processor_times(cpu_count: usize) -> Option<Vec<ProcessorTimes>> {
         )
     };
     (status >= 0).then_some(times)
+}
+
+type PdhQuery = *mut c_void;
+type PdhCounter = *mut c_void;
+type PdhOpenQuery = unsafe extern "system" fn(*const u16, usize, *mut PdhQuery) -> i32;
+type PdhAddEnglishCounter =
+    unsafe extern "system" fn(PdhQuery, *const u16, usize, *mut PdhCounter) -> i32;
+type PdhCollectQueryData = unsafe extern "system" fn(PdhQuery) -> i32;
+type PdhGetFormattedCounterValue =
+    unsafe extern "system" fn(PdhCounter, u32, *mut u32, *mut PdhFormattedValue) -> i32;
+type PdhCloseQuery = unsafe extern "system" fn(PdhQuery) -> i32;
+
+const PDH_FMT_DOUBLE: u32 = 0x0000_0200;
+const PDH_CSTATUS_VALID_DATA: u32 = 0;
+const PDH_CSTATUS_NEW_DATA: u32 = 1;
+
+#[repr(C)]
+union PdhValue {
+    double_value: f64,
+}
+
+#[repr(C)]
+struct PdhFormattedValue {
+    status: u32,
+    value: PdhValue,
+}
+
+impl Default for PdhFormattedValue {
+    fn default() -> Self {
+        Self {
+            status: 0,
+            value: PdhValue { double_value: 0.0 },
+        }
+    }
+}
+
+struct CpuUtility {
+    _library: Library,
+    query: PdhQuery,
+    counter: PdhCounter,
+    collect: PdhCollectQueryData,
+    formatted_value: PdhGetFormattedCounterValue,
+    close: PdhCloseQuery,
+}
+
+impl CpuUtility {
+    fn load() -> Option<Self> {
+        unsafe {
+            let library = Library::new(system_dll("pdh.dll").ok()?).ok()?;
+            let open = *library.get::<PdhOpenQuery>(b"PdhOpenQueryW\0").ok()?;
+            let add = *library
+                .get::<PdhAddEnglishCounter>(b"PdhAddEnglishCounterW\0")
+                .ok()?;
+            let collect = *library
+                .get::<PdhCollectQueryData>(b"PdhCollectQueryData\0")
+                .ok()?;
+            let formatted_value = *library
+                .get::<PdhGetFormattedCounterValue>(b"PdhGetFormattedCounterValue\0")
+                .ok()?;
+            let close = *library.get::<PdhCloseQuery>(b"PdhCloseQuery\0").ok()?;
+
+            let mut query = ptr::null_mut();
+            if open(ptr::null(), 0, &mut query) != 0 || query.is_null() {
+                return None;
+            }
+            let path = wide(r"\Processor Information(_Total)\% Processor Utility");
+            let mut counter = ptr::null_mut();
+            if add(query, path.as_ptr(), 0, &mut counter) != 0 || counter.is_null() {
+                close(query);
+                return None;
+            }
+            if collect(query) != 0 {
+                close(query);
+                return None;
+            }
+
+            Some(Self {
+                _library: library,
+                query,
+                counter,
+                collect,
+                formatted_value,
+                close,
+            })
+        }
+    }
+
+    fn sample(&self) -> Option<f32> {
+        if unsafe { (self.collect)(self.query) } != 0 {
+            return None;
+        }
+        let mut value = PdhFormattedValue::default();
+        let status = unsafe {
+            (self.formatted_value)(self.counter, PDH_FMT_DOUBLE, ptr::null_mut(), &mut value)
+        };
+        if status != 0 || !matches!(value.status, PDH_CSTATUS_VALID_DATA | PDH_CSTATUS_NEW_DATA) {
+            return None;
+        }
+        utility_percent(unsafe { value.value.double_value })
+    }
+}
+
+impl Drop for CpuUtility {
+    fn drop(&mut self) {
+        unsafe {
+            (self.close)(self.query);
+        }
+    }
+}
+
+fn utility_percent(value: f64) -> Option<f32> {
+    value.is_finite().then_some(value.clamp(0.0, 100.0) as f32)
 }
 
 #[repr(C)]
@@ -647,5 +765,13 @@ mod tests {
         let (performance, efficiency) = split_core_values(cores);
         assert_eq!(performance, [10.0, 20.0]);
         assert!(efficiency.is_empty());
+    }
+
+    #[test]
+    fn utility_percent_is_bounded_and_rejects_invalid_values() {
+        assert_eq!(utility_percent(-2.0), Some(0.0));
+        assert_eq!(utility_percent(42.5), Some(42.5));
+        assert_eq!(utility_percent(125.0), Some(100.0));
+        assert_eq!(utility_percent(f64::NAN), None);
     }
 }

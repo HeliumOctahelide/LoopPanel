@@ -7,7 +7,7 @@
   <g transform="translate(0 2)">
   <g fill="none" stroke-width="9">
     <circle cx="48" cy="50" r="38" stroke="#dbe8f6"/>
-    <circle cx="48" cy="50" r="38" stroke="#2477d4" transform="rotate(-90 48 50)" stroke-dasharray="{{ "%.2f"|format(cpu.load_percent * 2.3876) }} 238.76"/>
+    {% if cpu.load_percent is not none %}<circle cx="48" cy="50" r="38" stroke="#2477d4" transform="rotate(-90 48 50)" stroke-dasharray="{{ "%.2f"|format(cpu.load_percent * 2.3876) }} 238.76"/>{% endif %}
     <circle cx="192" cy="50" r="38" stroke="#e5def4"/>
     <circle cx="192" cy="50" r="38" stroke="#7757c7" transform="rotate(-90 192 50)" stroke-dasharray="{{ "%.2f"|format(memory.used_percent * 2.3876) }} 238.76"/>
 
@@ -18,7 +18,7 @@
   </g>
 
   <g dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" fill="#15191c">
-    <text x="48" y="40" font-size="29">{{ "%.0f"|format(cpu.load_percent) }}%</text>
+    <text x="48" y="40" font-size="29">{% if cpu.load_percent is none %}--{% else %}{{ "%.0f"|format(cpu.load_percent) }}%{% endif %}</text>
     <text x="48" y="65" font-size="14" letter-spacing="0.7" fill="#59636c">LOAD</text>
     <text x="192" y="36" font-size="16">{{ "%.0f"|format(memory.used_gib) }} GB</text>
     <line x1="171" y1="50" x2="213" y2="50" stroke="#59636c" stroke-width="1.5"/>

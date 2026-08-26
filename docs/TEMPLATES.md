@@ -28,14 +28,14 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 
 | 表达式 | 类型 |
 |---|---|
-| `cpu.load_percent` | float，0–100 |
+| `cpu.load_percent` | float，0–100 或 `none`；Windows Processor Utility，总体口径与任务管理器一致 |
 | `cpu.temperature_c` | integer 或 `none` |
 | `cpu.performance_frequency_ghz` | float 或 `none` |
 | `cpu.efficiency_frequency_ghz` | float 或 `none` |
 | `cpu.performance_cores` | list of `{ opacity }`，最多 8 项 |
 | `cpu.efficiency_cores` | list of `{ opacity }`，最多 16 项 |
 
-核心列表中的 `opacity` 已映射到 0.18–1.0，可直接用于 SVG 的 `fill-opacity`。
+核心列表中的 `opacity` 已映射到 0.18–1.0，可直接用于 SVG 的 `fill-opacity`；其来源是逐核忙碌时间，和总体 `cpu.load_percent` 的 Utility 口径不同。
 
 ### 内存
 

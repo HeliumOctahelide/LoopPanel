@@ -117,7 +117,9 @@ show_sensors = true
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">
+  {% if cpu.load_percent is not none %}
   <text x="20" y="30">{{ "%.0f"|format(cpu.load_percent) }}%</text>
+  {% endif %}
   {% if gpu.temperature_c is not none %}
   <text x="20" y="60">{{ "%d"|format(gpu.temperature_c) }}°C</text>
   {% endif %}
@@ -134,7 +136,7 @@ show_sensors = true
 - Win32、SetupAPI、HID Feature Report 与 `libusb0` bulk OUT；
 - MiniJinja 2.21 + resvg/usvg/tiny-skia；
 - `image` 解码 PNG、JPEG 与 GIF；
-- Windows CPU Set、NT processor times、PowrProf、GlobalMemoryStatusEx；
+- PDH Processor Utility、Windows CPU Set、NT per-core busy times、PowrProf、GlobalMemoryStatusEx；
 - NVIDIA 驱动自带 NVML；
 - IP Helper API、PDH；
 - WASAPI loopback + 自包含 radix-2 FFT；
@@ -157,6 +159,8 @@ cargo build --release --bins --locked
 
 - `looppanel.exe`：无控制台窗口的 GUI 主程序，发布时命名为 `LoopPanel.exe`；
 - `looppanel-temperature-service.exe`：主程序在首次启动时内部调用的服务程序，不是用户启动入口。
+
+构建目录会同时生成 `dashboard.svg.jinja`，它必须与 `LoopPanel.exe` 保持同目录，除非 `looppanel.toml` 指定了其他模板路径。
 
 图标的矢量源文件位于 `assets/looppanel-icon.svg`；同目录中的透明 PNG 与多尺寸 ICO 是发布用派生资源。主程序直接嵌入 ICO 作为托盘图标。
 

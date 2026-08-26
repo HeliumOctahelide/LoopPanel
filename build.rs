@@ -6,16 +6,31 @@ const LANGUAGE_EN_US: u16 = 0x0409;
 
 fn main() {
     println!("cargo:rerun-if-changed=assets/looppanel.ico");
+    println!("cargo:rerun-if-changed=dashboard.svg.jinja");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
 
+    copy_default_template();
     let icon = fs::read("assets/looppanel.ico").expect("failed to read LoopPanel icon");
     let resource = icon_resource(&icon);
     let output =
         PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is not set")).join("looppanel.res");
     fs::write(&output, resource).expect("failed to write Windows icon resource");
     println!("cargo:rustc-link-arg-bin=looppanel={}", output.display());
+}
+
+fn copy_default_template() {
+    let output = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is not set"));
+    let profile_directory = output
+        .ancestors()
+        .nth(3)
+        .expect("unexpected Cargo output directory");
+    fs::copy(
+        "dashboard.svg.jinja",
+        profile_directory.join("dashboard.svg.jinja"),
+    )
+    .expect("failed to copy default dashboard template");
 }
 
 fn icon_resource(icon: &[u8]) -> Vec<u8> {

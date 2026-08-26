@@ -159,7 +159,7 @@ struct DashboardContext<'a> {
 
 #[derive(Serialize)]
 struct CpuView {
-    load_percent: f32,
+    load_percent: Option<f32>,
     temperature_c: Option<u32>,
     performance_frequency_ghz: Option<f32>,
     efficiency_frequency_ghz: Option<f32>,
@@ -356,7 +356,7 @@ mod tests {
         .unwrap();
         let config = Config::default();
         let snapshot = Snapshot {
-            cpu_percent: 23.0,
+            cpu_percent: Some(23.0),
             cpu_temperature: Some(47),
             cpu_p_core_loads: vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
             cpu_e_core_loads: vec![
@@ -397,6 +397,22 @@ mod tests {
         assert!(svg.contains(">9<"));
         assert!(svg.contains("M332 402 V415"));
         assert!(svg.contains("M408 459 V446"));
+    }
+
+    #[test]
+    fn default_dashboard_marks_missing_cpu_utility() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let renderer = Renderer::new(
+            &root.join("dashboard.svg.jinja"),
+            Path::new(r"C:\Windows\Fonts\segoeui.ttf"),
+        )
+        .unwrap();
+        let svg = renderer
+            .render_svg(&Config::default(), &Snapshot::default())
+            .unwrap();
+
+        assert!(svg.contains(r#"<text x="48" y="40" font-size="29">--</text>"#));
+        assert!(!svg.contains("cx=\"48\" cy=\"50\" r=\"38\" stroke=\"#2477d4\""));
     }
 
     #[test]
