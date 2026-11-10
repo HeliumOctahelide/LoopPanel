@@ -101,7 +101,7 @@ The program always reads `looppanel.toml` next to `LoopPanel.exe`. Relative back
 ```toml
 background = "samples/aurora-circuit.jpg"
 template = "dashboard.svg.jinja"
-font = 'C:\Windows\Fonts\AGENCYB.TTF'
+font = 'C:\Windows\Fonts\bahnschrift.ttf'
 title = "LoopPanel"
 custom_lines = []
 
