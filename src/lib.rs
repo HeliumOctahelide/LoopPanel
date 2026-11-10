@@ -4,6 +4,7 @@ pub mod config;
 pub mod display;
 mod i18n;
 pub mod io_metrics;
+pub mod layout;
 pub mod media;
 pub mod monitor;
 pub mod process;

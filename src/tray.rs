@@ -5,7 +5,7 @@ use std::{
     ptr,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     thread::{self, JoinHandle},
 };
@@ -31,12 +31,12 @@ use windows_sys::Win32::{
             AppendMenuW, CREATESTRUCTW, CW_USEDEFAULT, CreateIconFromResourceEx, CreatePopupMenu,
             CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyMenu, DestroyWindow,
             DispatchMessageW, GWLP_USERDATA, GetCursorPos, GetMessageW, GetWindowLongPtrW,
-            IsWindow, MB_ICONERROR, MB_OK, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG,
-            MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-            SW_SHOWNORMAL, SetForegroundWindow, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
-            TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_APP, WM_CLOSE,
-            WM_CONTEXTMENU, WM_DESTROY, WM_NCCREATE, WM_NCDESTROY, WM_NULL, WNDCLASSW,
-            WS_EX_TOOLWINDOW, WS_OVERLAPPED,
+            IsWindow, MB_ICONERROR, MB_OK, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
+            MF_STRING, MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW,
+            RegisterWindowMessageW, SW_SHOWNORMAL, SetForegroundWindow, SetWindowLongPtrW,
+            TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
+            TranslateMessage, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_NCCREATE,
+            WM_NCDESTROY, WM_NULL, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
         },
     },
 };
@@ -44,6 +44,7 @@ use windows_sys::Win32::{
 use crate::{
     display,
     i18n::{t, tr, tr_with},
+    layout::Layout,
     process::DisplayLock,
     startup, temperature, temperature_service,
     win::{system_dll, wide},
@@ -62,6 +63,8 @@ const ID_STARTUP: u32 = 1002;
 const ID_RETRY: u32 = 1003;
 const ID_EXIT: u32 = 1004;
 const ID_INSTALL_TEMPERATURE: u32 = 1005;
+const ID_LAYOUT_DEFAULT: u32 = 1006;
+const ID_LAYOUT_SIMPLE: u32 = 1007;
 
 pub fn run() -> Result<()> {
     let _display_lock = DisplayLock::acquire()?;
@@ -114,6 +117,7 @@ pub fn run() -> Result<()> {
         config_file,
         display_state: DisplayState::Connecting,
         stop: Arc::new(AtomicBool::new(false)),
+        layout: Arc::new(AtomicU8::new(Layout::load() as u8)),
         worker: None,
         taskbar_created,
         icon,
@@ -205,6 +209,7 @@ struct AppState {
     config_file: PathBuf,
     display_state: DisplayState,
     stop: Arc<AtomicBool>,
+    layout: Arc<AtomicU8>,
     worker: Option<JoinHandle<Result<()>>>,
     taskbar_created: u32,
     icon: windows_sys::Win32::UI::WindowsAndMessaging::HICON,
@@ -219,9 +224,10 @@ impl AppState {
         self.display_state = DisplayState::Connecting;
         self.stop = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&self.stop);
+        let layout = Arc::clone(&self.layout);
         let window_value = window as usize;
         self.worker = Some(thread::spawn(move || {
-            let result = display::run_until(None, &stop, || unsafe {
+            let result = display::run_until(None, &stop, &layout, || unsafe {
                 PostMessageW(window_value as HWND, WM_DISPLAY_READY, 0, 0);
             });
             unsafe {
@@ -230,6 +236,16 @@ impl AppState {
             result
         }));
         true
+    }
+
+    /// 保存选择并通知显示线程立即换布局。
+    fn select_layout(&self, layout: Layout) -> Result<()> {
+        layout.save()?;
+        self.layout.store(layout as u8, Ordering::Relaxed);
+        if let Some(worker) = &self.worker {
+            worker.thread().unpark();
+        }
+        Ok(())
     }
 
     fn display_ready(&mut self) -> bool {
@@ -344,6 +360,8 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             &tr("tray.menu.install_temperature"),
         )?;
     }
+    let layout = Layout::from_u8(unsafe { (&*state).layout.load(Ordering::Relaxed) });
+    append_layout_menu(menu.0, layout)?;
     let startup_enabled = startup::is_enabled(&executable)?;
     append_menu(
         menu.0,
@@ -385,6 +403,8 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             }
         }
         ID_INSTALL_TEMPERATURE => install_temperature_service(&executable)?,
+        ID_LAYOUT_DEFAULT => unsafe { (&*state).select_layout(Layout::Default)? },
+        ID_LAYOUT_SIMPLE => unsafe { (&*state).select_layout(Layout::Simple)? },
         ID_EXIT => {
             let destroy = unsafe { (&mut *state).request_exit() };
             if destroy {
@@ -621,6 +641,37 @@ unsafe extern "system" fn window_proc(
         },
         _ => unsafe { DefWindowProcW(window, message, wparam, lparam) },
     }
+}
+
+/// “显示”子菜单：当前布局前打勾。
+fn append_layout_menu(
+    menu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+    current: Layout,
+) -> Result<()> {
+    let submenu = unsafe { CreatePopupMenu() };
+    ensure!(
+        !submenu.is_null(),
+        "{}",
+        t!("tray.error.menu_create_failed", error = last_error())
+    );
+    // 挂到父菜单之前由这里负责销毁；挂上之后随父菜单一起销毁。
+    let submenu = Menu(submenu);
+    let checked = |layout| if layout == current { MF_CHECKED } else { 0 };
+    append_menu(
+        submenu.0,
+        MF_STRING | checked(Layout::Default),
+        ID_LAYOUT_DEFAULT as usize,
+        &tr("tray.menu.display_default"),
+    )?;
+    append_menu(
+        submenu.0,
+        MF_STRING | checked(Layout::Simple),
+        ID_LAYOUT_SIMPLE as usize,
+        &tr("tray.menu.display_simple"),
+    )?;
+    append_menu(menu, MF_POPUP, submenu.0 as usize, &tr("tray.menu.display"))?;
+    std::mem::forget(submenu);
+    Ok(())
 }
 
 fn append_menu(

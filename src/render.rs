@@ -23,6 +23,10 @@ const AUDIO_BLOCK_COUNT: usize = 8;
 const AUDIO_INACTIVE: Rgba<u8> = Rgba([231, 224, 238, 255]);
 const AUDIO_ACTIVE: Rgba<u8> = Rgba([138, 88, 191, 255]);
 
+/// 内置的“单纯”布局：只显示 CPU 温度和占用率，字号按 480×480 铺满。
+const SIMPLE_TEMPLATE: &str = include_str!("../simple.svg.jinja");
+const SIMPLE_TEMPLATE_NAME: &str = "simple.svg.jinja";
+
 pub struct Renderer {
     environment: Environment<'static>,
     svg_options: usvg::Options<'static>,
@@ -38,18 +42,37 @@ impl Renderer {
                 path = template_path.display()
             )
         })?;
+        Self::from_template(
+            template,
+            &template_path.display().to_string(),
+            template_path.parent(),
+            font_path,
+        )
+    }
+
+    /// 使用程序内置的单纯布局，不读取模板文件。
+    pub fn simple(font_path: &Path) -> Result<Self> {
+        Self::from_template(
+            SIMPLE_TEMPLATE.to_owned(),
+            SIMPLE_TEMPLATE_NAME,
+            None,
+            font_path,
+        )
+    }
+
+    fn from_template(
+        template: String,
+        template_name: &str,
+        resources_directory: Option<&Path>,
+        font_path: &Path,
+    ) -> Result<Self> {
         let audio_enabled = template.contains(r#"id="audio-spectrum""#);
         let mut environment = Environment::new();
         environment.set_auto_escape_callback(|_| AutoEscape::Html);
         environment.set_undefined_behavior(UndefinedBehavior::Strict);
         environment
             .add_template_owned("dashboard.svg".to_owned(), template)
-            .with_context(|| {
-                t!(
-                    "render.template_parse_failed",
-                    path = template_path.display()
-                )
-            })?;
+            .with_context(|| t!("render.template_parse_failed", path = template_name))?;
 
         let font_data = fs::read(font_path)
             .with_context(|| t!("render.font_read_failed", path = font_path.display()))?;
@@ -69,7 +92,7 @@ impl Renderer {
             family
         };
         svg_options.font_family = family;
-        svg_options.resources_dir = template_path.parent().map(Path::to_path_buf);
+        svg_options.resources_dir = resources_directory.map(Path::to_path_buf);
 
         Ok(Self {
             environment,
@@ -361,6 +384,33 @@ mod tests {
         let base = RgbaImage::from_pixel(480, 480, Rgba([11, 22, 33, 255]));
         let composed = renderer.compose(base, &[]);
         assert_eq!(composed.get_pixel(240, 240).0, [11, 22, 33, 255]);
+    }
+
+    #[test]
+    fn simple_layout_shows_only_cpu_temperature_and_load() {
+        let mut renderer = Renderer::simple(Path::new(r"C:\Windows\Fonts\segoeui.ttf")).unwrap();
+        assert!(!renderer.audio_enabled());
+        let config = Config::default();
+        let snapshot = Snapshot {
+            cpu_percent: Some(12.4),
+            cpu_temperature: Some(47),
+            ..Snapshot::default()
+        };
+        let svg = renderer.render_svg(&config, &snapshot).unwrap();
+        assert!(svg.contains(">47°<"));
+        assert!(svg.contains(">12%<"));
+        assert!(!svg.contains("GPU"));
+
+        // 整个画面由不透明底色覆盖，背景图不会透出来。
+        renderer.update(&config, &snapshot).unwrap();
+        let image = renderer.compose(
+            RgbaImage::from_pixel(480, 480, Rgba([255, 0, 255, 255])),
+            &[],
+        );
+        assert_eq!(*image.get_pixel(2, 2), Rgba([0x0e, 0x11, 0x14, 255]));
+
+        let missing = renderer.render_svg(&config, &Snapshot::default()).unwrap();
+        assert_eq!(missing.matches(">--<").count(), 2);
     }
 
     #[test]

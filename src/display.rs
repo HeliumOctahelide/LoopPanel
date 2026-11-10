@@ -1,5 +1,5 @@
 use std::{
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
     thread,
     time::{Duration, Instant},
 };
@@ -9,6 +9,7 @@ use anyhow::Result;
 use crate::{
     audio::{BAND_COUNT, OutputSpectrum, SAMPLE_INTERVAL},
     config::Config,
+    layout::Layout,
     media::Background,
     monitor::Monitor,
     process,
@@ -17,14 +18,23 @@ use crate::{
     transport::Tm360,
 };
 
+fn renderer_for(config: &Config, layout: Layout) -> Result<Renderer> {
+    match layout {
+        Layout::Default => Renderer::new(&config.template, &config.font),
+        Layout::Simple => Renderer::simple(&config.font),
+    }
+}
+
 pub fn run_until(
     config_path: Option<&str>,
     stop: &AtomicBool,
+    layout: &AtomicU8,
     on_started: impl FnOnce(),
 ) -> Result<()> {
     let (config, _) = Config::load(config_path)?;
     let background = Background::load(config.background.as_deref())?;
-    let mut renderer = Renderer::new(&config.template, &config.font)?;
+    let mut active_layout = Layout::from_u8(layout.load(Ordering::Relaxed));
+    let mut renderer = renderer_for(&config, active_layout)?;
     let mut monitor = Monitor::new();
     monitor.prime();
     let mut snapshot = monitor.sample();
@@ -84,6 +94,21 @@ pub fn run_until(
             break;
         }
 
+        // 托盘菜单切换布局后会唤醒本线程：换一个渲染器并立即重画，不重新初始化设备。
+        let requested_layout = Layout::from_u8(layout.load(Ordering::Relaxed));
+        let layout_changed = requested_layout != active_layout;
+        if layout_changed {
+            active_layout = requested_layout;
+            renderer = renderer_for(&config, active_layout)?;
+            audio_spectrum = if renderer.audio_enabled() {
+                OutputSpectrum::open().ok()
+            } else {
+                None
+            };
+            audio_bands = [0.0; BAND_COUNT];
+            renderer.update(&config, &snapshot)?;
+        }
+
         let now = Instant::now();
         let repeat_due = now >= next_repeat;
         let content_due = animated && now >= next_content;
@@ -114,7 +139,7 @@ pub fn run_until(
                 }
             }
         }
-        let mut content_changed = audio_changed;
+        let mut content_changed = audio_changed || layout_changed;
         if content_due {
             frame_index = frame_index.wrapping_add(1);
             next_content = now + background.delay(frame_index, config.fps);

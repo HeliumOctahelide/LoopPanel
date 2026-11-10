@@ -19,6 +19,9 @@ open_config = "Open configuration file"
 install_temperature = "Install CPU temperature support…"
 start_at_login = "Start at login"
 exit = "Exit"
+display = "Display"
+display_default = "Default"
+display_simple = "Simple"
 
 [tray.install]
 cancelled = "CPU temperature support installation was cancelled; LoopPanel did not start"
@@ -232,3 +235,6 @@ generated_svg_invalid = "SVG generated from the template is invalid"
 canvas_alloc_failed = "Cannot allocate {width}×{height} RGBA canvas"
 pixel_buffer_mismatch = "SVG renderer returned a pixel buffer of the wrong length"
 template_render_failed = "Cannot render SVG template"
+
+[layout]
+save_failed = "Cannot save the display layout setting: {error}"

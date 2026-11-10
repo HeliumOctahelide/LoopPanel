@@ -19,6 +19,9 @@ open_config = "打开配置文件"
 install_temperature = "安装 CPU 温度支持…"
 start_at_login = "登录时自动启动"
 exit = "退出"
+display = "显示"
+display_default = "默认"
+display_simple = "简洁"
 
 [tray.install]
 cancelled = "CPU 温度支持安装已取消，LoopPanel 未启动"
@@ -232,3 +235,6 @@ generated_svg_invalid = "模板生成的 SVG 无效"
 canvas_alloc_failed = "无法分配 {width}×{height} RGBA 画布"
 pixel_buffer_mismatch = "SVG 渲染器返回了错误的像素缓冲区长度"
 template_render_failed = "无法渲染 SVG 模板"
+
+[layout]
+save_failed = "无法保存显示布局设置：{error}"

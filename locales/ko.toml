@@ -19,6 +19,9 @@ open_config = "설정 파일 열기"
 install_temperature = "CPU 온도 지원 설치…"
 start_at_login = "로그인 시 자동 시작"
 exit = "종료"
+display = "표시"
+display_default = "기본"
+display_simple = "단순"
 
 [tray.install]
 cancelled = "CPU 온도 지원 설치가 취소되어 LoopPanel을 시작하지 않았습니다"
@@ -232,3 +235,6 @@ generated_svg_invalid = "템플릿이 생성한 SVG가 올바르지 않습니다
 canvas_alloc_failed = "{width}×{height} RGBA 캔버스를 할당할 수 없습니다"
 pixel_buffer_mismatch = "SVG 렌더러가 잘못된 길이의 픽셀 버퍼를 반환했습니다"
 template_render_failed = "SVG 템플릿을 렌더링할 수 없습니다"
+
+[layout]
+save_failed = "표시 방식 설정을 저장할 수 없습니다: {error}"
