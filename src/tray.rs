@@ -35,8 +35,8 @@ use windows_sys::Win32::{
             MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
             SW_SHOWNORMAL, SetForegroundWindow, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
             TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_APP, WM_CLOSE,
-            WM_CONTEXTMENU, WM_DESTROY, WM_LBUTTONUP, WM_NCCREATE, WM_NCDESTROY, WM_NULL,
-            WM_RBUTTONUP, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
+            WM_CONTEXTMENU, WM_DESTROY, WM_NCCREATE, WM_NCDESTROY, WM_NULL, WNDCLASSW,
+            WS_EX_TOOLWINDOW, WS_OVERLAPPED,
         },
     },
 };
@@ -123,7 +123,9 @@ pub fn run() -> Result<()> {
     let title = wide("LoopPanel");
     let window = unsafe {
         CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            // 不能带 WS_EX_NOACTIVATE：那样 SetForegroundWindow 无法让这个隐藏窗口成为前台窗口，
+            // 托盘菜单就会被压在任务栏后面。
+            WS_EX_TOOLWINDOW,
             class_name.as_ptr(),
             title.as_ptr(),
             WS_OVERLAPPED,
@@ -293,7 +295,7 @@ impl AppState {
     }
 }
 
-fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POINT>) -> Result<()> {
+fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
     let (status, failed, executable, config_file) = unsafe {
         let state = &*state;
         (
@@ -352,14 +354,10 @@ fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POIN
     append_menu(menu.0, MF_SEPARATOR, 0, "")?;
     append_menu(menu.0, MF_STRING, ID_EXIT as usize, &tr("tray.menu.exit"))?;
 
-    let point = match notification_point {
-        Some(point) => point,
-        None => {
-            let mut point = POINT::default();
-            unsafe { GetCursorPos(&mut point) };
-            point
-        }
-    };
+    // 通知消息里附带的锚点是物理像素；本进程未声明 DPI 感知，TrackPopupMenu 用的是缩放后的
+    // 逻辑坐标。在 200% 缩放下直接使用锚点会把菜单推到屏幕右下角，所以统一取光标位置。
+    let mut point = POINT::default();
+    unsafe { GetCursorPos(&mut point) };
     unsafe { SetForegroundWindow(window) };
     let command = unsafe {
         TrackPopupMenu(
@@ -552,14 +550,6 @@ fn load_application_icon() -> windows_sys::Win32::UI::WindowsAndMessaging::HICON
     }
 }
 
-fn notification_point(value: WPARAM) -> POINT {
-    let value = value as u32;
-    POINT {
-        x: (value as u16 as i16) as i32,
-        y: ((value >> 16) as u16 as i16) as i32,
-    }
-}
-
 unsafe extern "system" fn window_proc(
     window: HWND,
     message: u32,
@@ -586,13 +576,11 @@ unsafe extern "system" fn window_proc(
     match message {
         WM_TRAY => {
             let event = lparam as u32 & 0xffff;
-            let selected = matches!(
-                event,
-                WM_CONTEXTMENU | NIN_SELECT | NIN_KEYSELECT | WM_LBUTTONUP | WM_RBUTTONUP
-            );
-            let point = matches!(event, WM_CONTEXTMENU | NIN_SELECT | NIN_KEYSELECT)
-                .then(|| notification_point(wparam));
-            if selected && let Err(error) = show_menu(state_pointer, window, point) {
+            // NOTIFYICON_VERSION_4 下，一次点击会先送来原始的 WM_?BUTTONUP，随后才是
+            // WM_CONTEXTMENU / NIN_SELECT。外壳只在后者送达时才允许本进程取得前台；
+            // 若在原始按键消息上就弹出菜单，SetForegroundWindow 会失败，菜单被托盘溢出面板盖住。
+            let selected = matches!(event, WM_CONTEXTMENU | NIN_SELECT | NIN_KEYSELECT);
+            if selected && let Err(error) = show_menu(state_pointer, window) {
                 show_fatal_error(&error);
             }
             0
