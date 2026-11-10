@@ -7,6 +7,7 @@ use std::{
 use anyhow::{Context, Result, anyhow, bail};
 use libloading::Library;
 
+use crate::i18n::t;
 use crate::protocol::{CHUNK_SIZE, ENDPOINT, INTERFACE, PID, VID};
 use crate::win::system_dll;
 
@@ -126,20 +127,27 @@ const _: [(); 81] = [(); STARTUP_REPORTS.len()];
 pub fn diagnostic_lines() -> Vec<String> {
     let mut lines = Vec::new();
     match HidApi::load().and_then(|api| api.target_paths()) {
-        Ok(paths) if paths.is_empty() => lines.push("HID 控制接口：未发现".to_owned()),
-        Ok(paths) => lines.push(format!("HID 控制接口：已发现 {} 个匹配接口", paths.len())),
-        Err(error) => lines.push(format!("HID 控制接口：枚举失败（{error:#}）")),
+        Ok(paths) if paths.is_empty() => lines.push(t!("transport.diag_hid_none")),
+        Ok(paths) => lines.push(t!("transport.diag_hid_found", count = paths.len())),
+        Err(error) => lines.push(t!(
+            "transport.diag_hid_enum_failed",
+            error = format!("{error:#}")
+        )),
     }
 
     match LibUsb::load() {
         Ok(api) => match api.target_count() {
-            Ok(0) => lines.push("libusb0 视频接口：未发现".to_owned()),
-            Ok(count) => lines.push(format!(
-                "libusb0 视频接口：已发现 {count} 个 345F:9132 设备"
+            Ok(0) => lines.push(t!("transport.diag_video_none")),
+            Ok(count) => lines.push(t!("transport.diag_video_found", count = count)),
+            Err(error) => lines.push(t!(
+                "transport.diag_video_enum_failed",
+                error = format!("{error:#}")
             )),
-            Err(error) => lines.push(format!("libusb0 视频接口：枚举失败（{error:#}）")),
         },
-        Err(error) => lines.push(format!("libusb0：无法加载（{error:#}）")),
+        Err(error) => lines.push(t!(
+            "transport.diag_libusb_load_failed",
+            error = format!("{error:#}")
+        )),
     }
     lines
 }
@@ -154,11 +162,17 @@ impl Tm360 {
         let hid_count = HidApi::load()?.target_paths()?.len();
         let bulk_count = LibUsb::load()?.target_count()?;
         if hid_count != 1 || bulk_count != 1 {
-            bail!("要求恰好一台 TM-360，但发现 {hid_count} 个 HID 接口和 {bulk_count} 个视频设备");
+            bail!(
+                "{}",
+                t!(
+                    "transport.device_count_mismatch",
+                    hid_count = hid_count,
+                    bulk_count = bulk_count
+                )
+            );
         }
-        let control = HidControl::open()
-            .context("无法打开 TM-360 HID 控制接口；请先从托盘彻底退出 JONSBO-AIO，再重试")?;
-        let bulk = LibUsb::load().context("无法加载系统 libusb0.dll")?;
+        let control = HidControl::open().with_context(|| t!("transport.hid_open_failed"))?;
+        let bulk = LibUsb::load().with_context(|| t!("transport.libusb_load_failed"))?;
         Ok(Self { bulk, control })
     }
 
@@ -166,7 +180,7 @@ impl Tm360 {
         self.control.initialize()?;
         self.bulk
             .open_target()
-            .context("无法 claim TM-360 视频接口；请先从托盘彻底退出 JONSBO-AIO，再重试")?;
+            .with_context(|| t!("transport.claim_failed"))?;
         self.bulk.write_all(first_packet)?;
         self.bulk.write_all(first_packet)?;
         self.control.enable_after_first_frame()?;
@@ -303,8 +317,11 @@ impl HidApi {
         };
         if devices == INVALID_HANDLE_VALUE {
             bail!(
-                "SetupDiGetClassDevsW 失败：{}",
-                std::io::Error::last_os_error()
+                "{}",
+                t!(
+                    "transport.setupdi_failed",
+                    error = std::io::Error::last_os_error()
+                )
             );
         }
 
@@ -379,12 +396,12 @@ struct HidControl {
 
 impl HidControl {
     fn open() -> Result<Self> {
-        let api = HidApi::load().context("加载 Windows HID/SetupAPI 失败")?;
+        let api = HidApi::load().with_context(|| t!("transport.hid_api_load_failed"))?;
         let path = api
             .target_paths()?
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow!("找不到 345F:9132 的 HID 接口"))?;
+            .ok_or_else(|| anyhow!("{}", t!("transport.hid_interface_not_found")))?;
         let handle = unsafe {
             (api.create_file)(
                 path.as_ptr(),
@@ -398,8 +415,11 @@ impl HidControl {
         };
         if handle == INVALID_HANDLE_VALUE {
             bail!(
-                "CreateFileW 打开 HID 接口失败：{}",
-                std::io::Error::last_os_error()
+                "{}",
+                t!(
+                    "transport.hid_create_file_failed",
+                    error = std::io::Error::last_os_error()
+                )
             );
         }
         Ok(Self { api, handle })
@@ -415,9 +435,12 @@ impl HidControl {
         };
         if success == 0 {
             bail!(
-                "发送 HID 指令 {:02X?} 失败：{}",
-                &report[1..],
-                std::io::Error::last_os_error(),
+                "{}",
+                t!(
+                    "transport.hid_send_failed",
+                    report = format!("{:02X?}", &report[1..]),
+                    error = std::io::Error::last_os_error()
+                )
             );
         }
         Ok(())
@@ -434,8 +457,11 @@ impl HidControl {
         };
         if success == 0 {
             bail!(
-                "读取 HID feature report 失败：{}",
-                std::io::Error::last_os_error()
+                "{}",
+                t!(
+                    "transport.hid_read_failed",
+                    error = std::io::Error::last_os_error()
+                )
             );
         }
         Ok(report)
@@ -526,7 +552,7 @@ impl LibUsb {
     fn load() -> Result<Self> {
         unsafe {
             let library = Library::new(system_dll("libusb0.dll")?)
-                .context("系统 System32 中没有可用的 libusb0.dll")?;
+                .with_context(|| t!("transport.libusb_dll_missing"))?;
             let init = *library.get::<UsbInit>(b"usb_init\0")?;
             let find_busses = *library.get::<UsbFind>(b"usb_find_busses\0")?;
             let find_devices = *library.get::<UsbFind>(b"usb_find_devices\0")?;
@@ -557,11 +583,23 @@ impl LibUsb {
     fn refresh(&self) -> Result<()> {
         let busses = unsafe { (self.find_busses)() };
         if busses < 0 {
-            bail!("usb_find_busses 失败：{}", self.error_text());
+            bail!(
+                "{}",
+                t!(
+                    "transport.usb_find_busses_failed",
+                    error = self.error_text()
+                )
+            );
         }
         let devices = unsafe { (self.find_devices)() };
         if devices < 0 {
-            bail!("usb_find_devices 失败：{}", self.error_text());
+            bail!(
+                "{}",
+                t!(
+                    "transport.usb_find_devices_failed",
+                    error = self.error_text()
+                )
+            );
         }
         Ok(())
     }
@@ -597,17 +635,24 @@ impl LibUsb {
             .target_devices()?
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow!("libusb0 未发现 345F:9132"))?;
+            .ok_or_else(|| anyhow!("{}", t!("transport.libusb_device_not_found")))?;
         let handle = unsafe { (self.open)(device) };
         if handle.is_null() {
-            bail!("usb_open 失败：{}", self.error_text());
+            bail!(
+                "{}",
+                t!("transport.usb_open_failed", error = self.error_text())
+            );
         }
         let result = unsafe { (self.claim_interface)(handle, INTERFACE) };
         if result < 0 {
             unsafe { (self.close)(handle) };
             bail!(
-                "usb_claim_interface({INTERFACE}) 失败：{}",
-                self.error_text()
+                "{}",
+                t!(
+                    "transport.usb_claim_interface_failed",
+                    interface = INTERFACE,
+                    error = self.error_text()
+                )
             );
         }
         self.handle = handle;
@@ -616,7 +661,7 @@ impl LibUsb {
 
     fn write_all(&self, data: &[u8]) -> Result<()> {
         if self.handle.is_null() {
-            bail!("libusb0 视频接口尚未打开");
+            bail!("{}", t!("transport.video_interface_not_open"));
         }
         for chunk in data.chunks(CHUNK_SIZE) {
             let mut offset = 0;
@@ -632,7 +677,10 @@ impl LibUsb {
                     )
                 };
                 if written <= 0 {
-                    bail!("usb_bulk_write 失败：{}", self.error_text());
+                    bail!(
+                        "{}",
+                        t!("transport.usb_bulk_write_failed", error = self.error_text())
+                    );
                 }
                 offset += written as usize;
             }
@@ -644,7 +692,7 @@ impl LibUsb {
         unsafe {
             let pointer = (self.strerror)();
             if pointer.is_null() {
-                "未知 libusb0 错误".to_owned()
+                t!("transport.libusb_unknown_error")
             } else {
                 CStr::from_ptr(pointer).to_string_lossy().into_owned()
             }

@@ -6,6 +6,8 @@ use std::{
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::i18n::t;
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -51,7 +53,7 @@ impl Config {
 
         if !path.exists() {
             if explicit.is_some() {
-                anyhow::bail!("找不到配置文件：{}", path.display());
+                anyhow::bail!("{}", t!("config.not_found", path = path.display()));
             }
             let mut config = Self::default();
             config.resolve(&executable_directory);
@@ -59,15 +61,15 @@ impl Config {
         }
 
         let text = fs::read_to_string(&path)
-            .with_context(|| format!("无法读取配置文件：{}", path.display()))?;
+            .with_context(|| t!("config.read_failed", path = path.display()))?;
         let mut config: Self = toml::from_str(&text)
-            .with_context(|| format!("配置文件格式错误：{}", path.display()))?;
+            .with_context(|| t!("config.format_invalid", path = path.display()))?;
         let base = path
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or(Path::new("."))
             .canonicalize()
-            .with_context(|| format!("无法解析配置目录：{}", path.display()))?;
+            .with_context(|| t!("config.directory_resolve_failed", path = path.display()))?;
 
         config.resolve(&base);
         config.fps = config.fps.clamp(1, 30);

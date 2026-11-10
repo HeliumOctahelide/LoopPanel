@@ -1,6 +1,8 @@
 use std::{f32::consts::PI, ffi::c_void, ptr, time::Duration};
 
 use anyhow::{Result, bail, ensure};
+
+use crate::i18n::t;
 use windows_sys::{
     Win32::{
         Media::Audio::{
@@ -58,9 +60,9 @@ impl OutputSpectrum {
                     &mut client,
                 )
             },
-            "无法创建 WASAPI 音频客户端",
+            || t!("audio.client_create_failed"),
         )?;
-        let client = ComPtr::new(client, "WASAPI 音频客户端")?;
+        let client = ComPtr::new(client, || t!("audio.name_wasapi_client"))?;
         let client_interface = client.as_interface::<AudioClientVTable>();
 
         let mut wave_format = ptr::null_mut();
@@ -68,9 +70,9 @@ impl OutputSpectrum {
             unsafe {
                 ((*(*client_interface).vtable).get_mix_format)(client.as_raw(), &mut wave_format)
             },
-            "无法取得默认输出设备的混音格式",
+            || t!("audio.mix_format_failed"),
         )?;
-        ensure!(!wave_format.is_null(), "WASAPI 返回了空混音格式");
+        ensure!(!wave_format.is_null(), "{}", t!("audio.null_mix_format"));
         let format_info = unsafe { FormatInfo::from_wave_format(wave_format) };
         let initialize_result = unsafe {
             ((*(*client_interface).vtable).initialize)(
@@ -85,7 +87,7 @@ impl OutputSpectrum {
         };
         unsafe { CoTaskMemFree(wave_format.cast()) };
         let format_info = format_info?;
-        check_hresult(initialize_result, "无法初始化 WASAPI 回环采集")?;
+        check_hresult(initialize_result, || t!("audio.loopback_init_failed"))?;
 
         let mut capture = ptr::null_mut();
         check_hresult(
@@ -96,12 +98,12 @@ impl OutputSpectrum {
                     &mut capture,
                 )
             },
-            "无法取得 WASAPI 采集接口",
+            || t!("audio.capture_interface_failed"),
         )?;
-        let capture = ComPtr::new(capture, "WASAPI 采集接口")?;
+        let capture = ComPtr::new(capture, || t!("audio.name_wasapi_capture"))?;
         check_hresult(
             unsafe { ((*(*client_interface).vtable).start)(client.as_raw()) },
-            "无法启动 WASAPI 回环采集",
+            || t!("audio.loopback_start_failed"),
         )?;
 
         Ok(Self {
@@ -144,7 +146,7 @@ impl OutputSpectrum {
                         &mut packet_frames,
                     )
                 },
-                "无法读取 WASAPI 缓冲区大小",
+                || t!("audio.buffer_size_failed"),
             )?;
             if packet_frames == 0 {
                 return Ok(());
@@ -164,7 +166,7 @@ impl OutputSpectrum {
                         ptr::null_mut(),
                     )
                 },
-                "无法读取 WASAPI 音频数据",
+                || t!("audio.read_data_failed"),
             )?;
 
             let silent = flags & AUDCLNT_BUFFERFLAGS_SILENT as u32 != 0;
@@ -190,7 +192,7 @@ impl OutputSpectrum {
             }
             check_hresult(
                 unsafe { ((*(*capture).vtable).release_buffer)(self.capture.as_raw(), frames) },
-                "无法释放 WASAPI 音频缓冲区",
+                || t!("audio.release_buffer_failed"),
             )?;
         }
     }
@@ -217,9 +219,9 @@ fn create_enumerator() -> Result<ComPtr> {
                 &mut enumerator,
             )
         },
-        "无法创建音频设备枚举器",
+        || t!("audio.enumerator_create_failed"),
     )?;
-    ComPtr::new(enumerator, "音频设备枚举器")
+    ComPtr::new(enumerator, || t!("audio.name_enumerator"))
 }
 
 fn default_output_device(enumerator: &ComPtr) -> Result<ComPtr> {
@@ -234,9 +236,9 @@ fn default_output_device(enumerator: &ComPtr) -> Result<ComPtr> {
                 &mut device,
             )
         },
-        "无法取得默认音频输出设备",
+        || t!("audio.default_device_failed"),
     )?;
-    ComPtr::new(device, "默认音频输出设备")
+    ComPtr::new(device, || t!("audio.name_default_device"))
 }
 
 struct FormatInfo {
@@ -249,11 +251,11 @@ struct FormatInfo {
 impl FormatInfo {
     unsafe fn from_wave_format(format: *const WAVEFORMATEX) -> Result<Self> {
         let wave = unsafe { ptr::read_unaligned(format) };
-        ensure!(wave.nChannels > 0, "默认音频格式没有声道");
-        ensure!(wave.nBlockAlign > 0, "默认音频格式的帧宽度无效");
+        ensure!(wave.nChannels > 0, "{}", t!("audio.no_channels"));
+        ensure!(wave.nBlockAlign > 0, "{}", t!("audio.invalid_block_align"));
         let bits_per_sample = wave.wBitsPerSample;
         let tag = if wave.wFormatTag == WAVE_FORMAT_EXTENSIBLE {
-            ensure!(wave.cbSize >= 22, "WAVEFORMATEXTENSIBLE 长度不足");
+            ensure!(wave.cbSize >= 22, "{}", t!("audio.extensible_too_short"));
             unsafe { ptr::read_unaligned(format.cast::<u8>().add(24).cast::<u32>()) as u16 }
         } else {
             wave.wFormatTag
@@ -265,8 +267,12 @@ impl FormatInfo {
             (WAVE_FORMAT_PCM, 24) => SampleFormat::Pcm24,
             (WAVE_FORMAT_PCM, 32) => SampleFormat::Pcm32,
             _ => bail!(
-                "不支持默认音频格式：tag=0x{tag:04X}，{} bit",
-                bits_per_sample
+                "{}",
+                t!(
+                    "audio.unsupported_format",
+                    tag = format!("{tag:04X}"),
+                    bits = bits_per_sample
+                )
             ),
         };
         Ok(Self {
@@ -415,7 +421,7 @@ impl ComApartment {
                 (COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE) as u32,
             )
         };
-        check_hresult(result, "无法初始化 Core Audio 所需的 COM")?;
+        check_hresult(result, || t!("audio.com_init_failed"))?;
         Ok(Self)
     }
 }
@@ -429,8 +435,12 @@ impl Drop for ComApartment {
 struct ComPtr(*mut c_void);
 
 impl ComPtr {
-    fn new(pointer: *mut c_void, name: &str) -> Result<Self> {
-        ensure!(!pointer.is_null(), "{name}返回了空接口");
+    fn new(pointer: *mut c_void, name: impl FnOnce() -> String) -> Result<Self> {
+        ensure!(
+            !pointer.is_null(),
+            "{}",
+            t!("audio.null_interface", name = name())
+        );
         Ok(Self(pointer))
     }
 
@@ -523,8 +533,16 @@ struct AudioCaptureClientVTable {
     get_next_packet_size: unsafe extern "system" fn(*mut c_void, *mut u32) -> HRESULT,
 }
 
-fn check_hresult(result: HRESULT, context: &str) -> Result<()> {
-    ensure!(result >= 0, "{context}（HRESULT 0x{:08X}）", result as u32);
+fn check_hresult(result: HRESULT, context: impl FnOnce() -> String) -> Result<()> {
+    ensure!(
+        result >= 0,
+        "{}",
+        t!(
+            "audio.hresult_failed",
+            context = context(),
+            code = format!("{:08X}", result as u32)
+        )
+    );
     Ok(())
 }
 

@@ -9,6 +9,8 @@ use windows_sys::Win32::{
     System::Threading::CreateMutexW,
 };
 
+use crate::i18n::t;
+
 type Handle = *mut std::ffi::c_void;
 const INVALID_HANDLE_VALUE: Handle = -1_isize as Handle;
 const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
@@ -58,7 +60,7 @@ const OFFICIAL_APPS: [&str; 2] = ["JONSBO-AIO.exe", "LcdFusion.exe"];
 pub fn ensure_official_app_stopped() -> Result<()> {
     for app in OFFICIAL_APPS {
         if process_running(app)? {
-            bail!("{app} 仍在运行。请先彻底退出它，再启动 LoopPanel");
+            bail!("{}", t!("process.official_app_running", app = app));
         }
     }
     Ok(())
@@ -77,14 +79,17 @@ impl DisplayLock {
         let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
         if handle.is_null() {
             bail!(
-                "无法创建 LoopPanel 单实例锁：{}",
-                std::io::Error::last_os_error()
+                "{}",
+                t!(
+                    "process.lock_create_failed",
+                    error = std::io::Error::last_os_error()
+                )
             );
         }
         let error = unsafe { GetLastError() };
         if error == ERROR_ALREADY_EXISTS {
             unsafe { WinCloseHandle(handle) };
-            bail!("已有一个 LoopPanel 实例正在控制屏幕");
+            bail!("{}", t!("process.already_running"));
         }
         Ok(Self(handle))
     }
@@ -100,8 +105,11 @@ fn process_running(expected: &str) -> Result<bool> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snapshot == INVALID_HANDLE_VALUE {
         bail!(
-            "无法检查正在运行的程序：{}",
-            std::io::Error::last_os_error()
+            "{}",
+            t!(
+                "process.process_check_failed",
+                error = std::io::Error::last_os_error()
+            )
         );
     }
 
@@ -113,8 +121,11 @@ fn process_running(expected: &str) -> Result<bool> {
             return Ok(false);
         }
         bail!(
-            "无法读取进程列表：{}",
-            std::io::Error::from_raw_os_error(error as i32)
+            "{}",
+            t!(
+                "process.process_list_read_failed",
+                error = std::io::Error::from_raw_os_error(error as i32)
+            )
         );
     }
     loop {
@@ -134,8 +145,11 @@ fn process_running(expected: &str) -> Result<bool> {
                 return Ok(false);
             }
             bail!(
-                "读取进程列表时发生错误：{}",
-                std::io::Error::from_raw_os_error(error as i32)
+                "{}",
+                t!(
+                    "process.process_list_error",
+                    error = std::io::Error::from_raw_os_error(error as i32)
+                )
             );
         }
     }

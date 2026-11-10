@@ -1,6 +1,8 @@
 use anyhow::{Result, ensure};
 use image::RgbaImage;
 
+use crate::i18n::t;
+
 pub const WIDTH: u16 = 480;
 pub const HEIGHT: u16 = 480;
 pub const VIC: u8 = 143;
@@ -14,7 +16,7 @@ pub const CHUNK_SIZE: usize = 65_536;
 // https://github.com/Fakinvisibility/b360gt-driver/blob/94ae7f2a710123b582ca3fa806d85ee1c684e287/src/b360gt/protocol.py
 pub fn rgba_to_uyvy(image: &RgbaImage, brightness: f32) -> Result<Vec<u8>> {
     let (width, height) = image.dimensions();
-    ensure!(width % 2 == 0, "UYVY422 要求图片宽度为偶数");
+    ensure!(width % 2 == 0, "{}", t!("protocol.width_not_even"));
     let scale = (brightness.clamp(0.05, 1.0) * 256.0).round() as i32;
     let source = image.as_raw();
     let mut output = Vec::with_capacity(width as usize * height as usize * 2);
@@ -44,9 +46,17 @@ pub fn rgba_to_uyvy(image: &RgbaImage, brightness: f32) -> Result<Vec<u8>> {
 }
 
 pub fn frame_packet(uyvy: &[u8], width: u16, height: u16) -> Result<Vec<u8>> {
-    ensure!(width.is_multiple_of(16), "MS9132 全帧宽度必须是 16 的倍数");
+    ensure!(
+        width.is_multiple_of(16),
+        "{}",
+        t!("protocol.width_not_multiple_of_16")
+    );
     let payload_length = width as usize * height as usize * 2;
-    ensure!(uyvy.len() == payload_length, "像素数据长度不正确");
+    ensure!(
+        uyvy.len() == payload_length,
+        "{}",
+        t!("protocol.pixel_length_invalid")
+    );
 
     let mut packet = Vec::with_capacity(payload_length + 16);
     packet.extend_from_slice(&[

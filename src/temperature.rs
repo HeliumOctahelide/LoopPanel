@@ -6,6 +6,7 @@ use std::{
     ptr,
 };
 
+use crate::i18n::t;
 use anyhow::{Context, Result, bail, ensure};
 use libloading::Library;
 use windows_sys::Win32::{
@@ -90,7 +91,7 @@ impl CpuTemperature {
                 let pawn = PawnIo::open(INTEL_MSR_MODULE, "IntelMSR")?;
                 let target = pawn.execute(c"ioctl_read_msr", IA32_TEMPERATURE_TARGET)?;
                 let tj_max = ((target >> 16) & 0xff) as f32;
-                ensure!(tj_max > 0.0, "IA32_TEMPERATURE_TARGET 没有返回有效的 TjMax");
+                ensure!(tj_max > 0.0, "{}", t!("temperature.tj_max_invalid"));
                 Ok(Self {
                     pawn,
                     sensor: Sensor::IntelPackage { tj_max },
@@ -183,10 +184,19 @@ fn cpu_kind(vendor: &[u8; 12], family: u32) -> Result<CpuKind> {
         b"GenuineIntel" => Ok(CpuKind::Intel),
         // 与官方 AMDFamily17 模块接受的范围一致：Zen 至 Zen 5。
         b"AuthenticAMD" if (0x17..=0x1a).contains(&family) => Ok(CpuKind::AmdZen),
-        b"AuthenticAMD" => bail!("暂不支持 AMD Family {family:X}h 的 CPU 温度读取"),
+        b"AuthenticAMD" => bail!(
+            "{}",
+            t!(
+                "temperature.amd_family_unsupported",
+                family = format!("{family:X}")
+            )
+        ),
         _ => bail!(
-            "暂不支持该 CPU 厂商的温度读取：{}",
-            String::from_utf8_lossy(vendor)
+            "{}",
+            t!(
+                "temperature.cpu_vendor_unsupported",
+                vendor = String::from_utf8_lossy(vendor)
+            )
         ),
     }
 }
@@ -194,28 +204,33 @@ fn cpu_kind(vendor: &[u8; 12], family: u32) -> Result<CpuKind> {
 pub fn service_sample() -> Result<u32> {
     let service_pid = running_service_pid()?;
     let endpoint = registry_string(HKEY_LOCAL_MACHINE, ENDPOINT_KEY, ENDPOINT_VALUE)
-        .context("CPU 温度服务尚未发布命名管道")?;
+        .with_context(|| t!("temperature.service_pipe_not_published"))?;
     let (registered_pid, pipe_name) = endpoint
         .split_once('|')
-        .context("CPU 温度服务发布了无效的命名管道信息")?;
+        .with_context(|| t!("temperature.service_pipe_info_invalid"))?;
     let registered_pid = registered_pid
         .parse::<u32>()
-        .context("CPU 温度服务发布了无效的进程编号")?;
+        .with_context(|| t!("temperature.service_pid_invalid"))?;
     ensure!(
         registered_pid == service_pid,
-        "CPU 温度服务正在切换实例，请稍后重试"
+        "{}",
+        t!("temperature.service_switching_instance")
     );
     ensure!(
         pipe_name.starts_with(PIPE_NAME_PREFIX),
-        "CPU 温度服务发布了无效的命名管道名称"
+        "{}",
+        t!("temperature.service_pipe_name_invalid")
     );
 
     let pipe_name = wide(pipe_name);
     let available = unsafe { WaitNamedPipeW(pipe_name.as_ptr(), PIPE_CONNECT_TIMEOUT_MS) };
     if available == 0 {
         bail!(
-            "CPU 温度服务暂时不可用：{}",
-            std::io::Error::last_os_error()
+            "{}",
+            t!(
+                "temperature.service_unavailable",
+                error = std::io::Error::last_os_error()
+            )
         );
     }
     let pipe = unsafe {
@@ -231,33 +246,46 @@ pub fn service_sample() -> Result<u32> {
     };
     ensure!(
         pipe != INVALID_HANDLE_VALUE,
-        "无法连接 CPU 温度服务：{}",
-        std::io::Error::last_os_error()
+        "{}",
+        t!(
+            "temperature.service_connect_failed",
+            error = std::io::Error::last_os_error()
+        )
     );
     let pipe = OwnedHandle(pipe);
 
     let mut actual_pid = 0_u32;
     ensure!(
         unsafe { GetNamedPipeServerProcessId(pipe.0, &mut actual_pid) } != 0,
-        "无法验证 CPU 温度服务进程：{}",
-        std::io::Error::last_os_error()
+        "{}",
+        t!(
+            "temperature.service_verify_failed",
+            error = std::io::Error::last_os_error()
+        )
     );
     ensure!(
         actual_pid == service_pid,
-        "命名管道并非由当前 CPU 温度服务创建"
+        "{}",
+        t!("temperature.pipe_not_from_service")
     );
     let mode = PIPE_READMODE_MESSAGE;
     ensure!(
         unsafe { SetNamedPipeHandleState(pipe.0, &mode, ptr::null(), ptr::null()) } != 0,
-        "无法设置 CPU 温度管道模式：{}",
-        std::io::Error::last_os_error()
+        "{}",
+        t!(
+            "temperature.pipe_mode_failed",
+            error = std::io::Error::last_os_error()
+        )
     );
 
     let event = OwnedHandle(unsafe { CreateEventW(ptr::null(), 1, 0, ptr::null()) });
     ensure!(
         !event.0.is_null(),
-        "无法创建 CPU 温度管道事件：{}",
-        std::io::Error::last_os_error()
+        "{}",
+        t!(
+            "temperature.pipe_event_failed",
+            error = std::io::Error::last_os_error()
+        )
     );
     let mut operation: OVERLAPPED = unsafe { zeroed() };
     operation.hEvent = event.0;
@@ -280,20 +308,26 @@ pub fn service_sample() -> Result<u32> {
         let error = unsafe { GetLastError() };
         ensure!(
             error == ERROR_IO_PENDING,
-            "CPU 温度服务请求失败：{}",
-            std::io::Error::from_raw_os_error(error as i32)
+            "{}",
+            t!(
+                "temperature.service_request_failed",
+                error = std::io::Error::from_raw_os_error(error as i32)
+            )
         );
         match unsafe { WaitForSingleObject(event.0, PIPE_RESPONSE_TIMEOUT_MS) } {
             WAIT_OBJECT_0 => completed_bytes(pipe.0, &mut operation)?,
             WAIT_TIMEOUT => {
                 cancel_and_drain(pipe.0, &mut operation);
-                bail!("等待 CPU 温度服务响应超时");
+                bail!("{}", t!("temperature.service_response_timeout"));
             }
             _ => {
                 cancel_and_drain(pipe.0, &mut operation);
                 bail!(
-                    "等待 CPU 温度服务响应失败：{}",
-                    std::io::Error::last_os_error()
+                    "{}",
+                    t!(
+                        "temperature.service_response_wait_failed",
+                        error = std::io::Error::last_os_error()
+                    )
                 );
             }
         }
@@ -306,16 +340,22 @@ fn running_service_pid() -> Result<u32> {
         let manager = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
         ensure!(
             !manager.is_null(),
-            "无法打开服务控制管理器：{}",
-            std::io::Error::last_os_error()
+            "{}",
+            t!(
+                "temperature.scm_open_failed",
+                error = std::io::Error::last_os_error()
+            )
         );
         let manager = OwnedServiceHandle(manager);
         let name = wide("LoopPanelTemperature");
         let service = OpenServiceW(manager.0, name.as_ptr(), SERVICE_QUERY_STATUS);
         ensure!(
             !service.is_null(),
-            "CPU 温度服务尚未安装或不可用：{}",
-            std::io::Error::last_os_error()
+            "{}",
+            t!(
+                "temperature.service_not_installed",
+                error = std::io::Error::last_os_error()
+            )
         );
         let service = OwnedServiceHandle(service);
         let mut status: SERVICE_STATUS_PROCESS = zeroed();
@@ -328,12 +368,16 @@ fn running_service_pid() -> Result<u32> {
                 size_of::<SERVICE_STATUS_PROCESS>() as u32,
                 &mut needed,
             ) != 0,
-            "无法查询 CPU 温度服务状态：{}",
-            std::io::Error::last_os_error()
+            "{}",
+            t!(
+                "temperature.service_query_failed",
+                error = std::io::Error::last_os_error()
+            )
         );
         ensure!(
             status.dwCurrentState == SERVICE_RUNNING && status.dwProcessId != 0,
-            "CPU 温度服务当前未运行"
+            "{}",
+            t!("temperature.service_not_running")
         );
         Ok(status.dwProcessId)
     }
@@ -344,8 +388,11 @@ fn completed_bytes(handle: HANDLE, operation: &mut OVERLAPPED) -> Result<u32> {
     let success = unsafe { GetOverlappedResult(handle, operation, &mut transferred, 0) };
     ensure!(
         success != 0,
-        "CPU 温度管道操作失败：{}",
-        std::io::Error::last_os_error()
+        "{}",
+        t!(
+            "temperature.pipe_operation_failed",
+            error = std::io::Error::last_os_error()
+        )
     );
     Ok(transferred)
 }
@@ -368,30 +415,53 @@ struct PawnIo {
 impl PawnIo {
     fn open(module: &[u8], module_name: &str) -> Result<Self> {
         let library_path = pawnio_install_directory()?.join("PawnIOLib.dll");
-        let library = unsafe { Library::new(&library_path) }
-            .with_context(|| format!("无法加载 {}", library_path.display()))?;
+        let library = unsafe { Library::new(&library_path) }.with_context(|| {
+            t!(
+                "temperature.library_load_failed",
+                path = library_path.display()
+            )
+        })?;
         unsafe {
-            let open = *library
-                .get::<PawnOpen>(b"pawnio_open\0")
-                .context("PawnIOLib.dll 缺少 pawnio_open")?;
-            let load = *library
-                .get::<PawnLoad>(b"pawnio_load\0")
-                .context("PawnIOLib.dll 缺少 pawnio_load")?;
+            let open = *library.get::<PawnOpen>(b"pawnio_open\0").with_context(|| {
+                t!(
+                    "temperature.library_missing_function",
+                    function = "pawnio_open"
+                )
+            })?;
+            let load = *library.get::<PawnLoad>(b"pawnio_load\0").with_context(|| {
+                t!(
+                    "temperature.library_missing_function",
+                    function = "pawnio_load"
+                )
+            })?;
             let execute = *library
                 .get::<PawnExecute>(b"pawnio_execute\0")
-                .context("PawnIOLib.dll 缺少 pawnio_execute")?;
+                .with_context(|| {
+                    t!(
+                        "temperature.library_missing_function",
+                        function = "pawnio_execute"
+                    )
+                })?;
             let close = *library
                 .get::<PawnClose>(b"pawnio_close\0")
-                .context("PawnIOLib.dll 缺少 pawnio_close")?;
+                .with_context(|| {
+                    t!(
+                        "temperature.library_missing_function",
+                        function = "pawnio_close"
+                    )
+                })?;
 
             let mut handle = ptr::null_mut();
-            check_hresult(open(&mut handle), "无法打开 PawnIO")?;
+            check_hresult(open(&mut handle), &t!("temperature.pawnio_open_failed"))?;
             if handle.is_null() {
-                bail!("PawnIO 返回了空执行器句柄");
+                bail!("{}", t!("temperature.pawnio_null_handle"));
             }
             if let Err(error) = check_hresult(
                 load(handle, module.as_ptr(), module.len()),
-                &format!("无法加载官方 {module_name} 模块"),
+                &t!(
+                    "temperature.pawnio_module_load_failed",
+                    module = module_name
+                ),
             ) {
                 close(handle);
                 return Err(error);
@@ -423,9 +493,20 @@ impl PawnIo {
         };
         check_hresult(
             result,
-            &format!("{} 无法读取 0x{address:X}", function.to_string_lossy()),
+            &t!(
+                "temperature.pawnio_read_failed",
+                function = function.to_string_lossy(),
+                address = format!("{address:X}")
+            ),
         )?;
-        ensure!(returned == 1, "PawnIO 返回了错误的结果长度：{returned}");
+        ensure!(
+            returned == 1,
+            "{}",
+            t!(
+                "temperature.pawnio_result_length_invalid",
+                length = returned
+            )
+        );
         Ok(output[0])
     }
 }
@@ -444,13 +525,21 @@ fn pawnio_install_directory() -> Result<PathBuf> {
         r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO",
         "InstallLocation",
     )
-    .context("未找到 PawnIO 2.x 安装信息")?;
-    ensure!(!directory.is_empty(), "PawnIO 安装目录为空");
+    .with_context(|| t!("temperature.pawnio_not_installed"))?;
+    ensure!(
+        !directory.is_empty(),
+        "{}",
+        t!("temperature.pawnio_directory_empty")
+    );
     Ok(PathBuf::from(directory))
 }
 
 fn package_temperature(tj_max: f32, status: u64) -> Result<f32> {
-    ensure!(status & (1 << 31) != 0, "CPU Package 温度读数当前无效");
+    ensure!(
+        status & (1 << 31) != 0,
+        "{}",
+        t!("temperature.package_temperature_invalid")
+    );
     let distance = ((status >> 16) & 0x7f) as f32;
     Ok(tj_max - distance)
 }
@@ -460,7 +549,8 @@ fn package_temperature(tj_max: f32, status: u64) -> Result<f32> {
 fn amd_reported_temperature(register: u32, tctl_offset: f32) -> Result<f32> {
     ensure!(
         register != 0 && register != u32::MAX,
-        "CPU 报告温度寄存器当前无效"
+        "{}",
+        t!("temperature.amd_register_invalid")
     );
     let mut temperature = (register >> 21) as f32 * 0.125;
     if register & (1 << 19) != 0 || register & (0b11 << 16) == (0b11 << 16) {
@@ -470,7 +560,11 @@ fn amd_reported_temperature(register: u32, tctl_offset: f32) -> Result<f32> {
     // 不遵守 PCI 互斥量的软件可能改写索引寄存器，使这次读到的是别的寄存器。
     ensure!(
         (-40.0..=150.0).contains(&temperature),
-        "CPU 报告温度超出合理范围：{temperature}°C"
+        "{}",
+        t!(
+            "temperature.amd_temperature_out_of_range",
+            temperature = temperature
+        )
     );
     Ok(temperature)
 }
@@ -511,8 +605,11 @@ impl PciMutex {
                     ptr::null_mut(),
                 )
             } != 0,
-            "无法创建 PCI 互斥量安全描述符：{}",
-            std::io::Error::last_os_error()
+            "{}",
+            t!(
+                "temperature.pci_mutex_descriptor_failed",
+                error = std::io::Error::last_os_error()
+            )
         );
         let attributes = SECURITY_ATTRIBUTES {
             nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -531,15 +628,25 @@ impl PciMutex {
         };
         let error = std::io::Error::last_os_error();
         unsafe { LocalFree(descriptor.cast()) };
-        ensure!(!handle.is_null(), "无法打开 PCI 互斥量：{error}");
+        ensure!(
+            !handle.is_null(),
+            "{}",
+            t!("temperature.pci_mutex_open_failed", error = error)
+        );
         Ok(Self(handle))
     }
 
     fn lock(&self) -> Result<PciMutexGuard<'_>> {
         match unsafe { WaitForSingleObject(self.0, PCI_MUTEX_TIMEOUT_MS) } {
             WAIT_OBJECT_0 | WAIT_ABANDONED => Ok(PciMutexGuard(self)),
-            WAIT_TIMEOUT => bail!("等待 PCI 互斥量超时"),
-            _ => bail!("等待 PCI 互斥量失败：{}", std::io::Error::last_os_error()),
+            WAIT_TIMEOUT => bail!("{}", t!("temperature.pci_mutex_timeout")),
+            _ => bail!(
+                "{}",
+                t!(
+                    "temperature.pci_mutex_wait_failed",
+                    error = std::io::Error::last_os_error()
+                )
+            ),
         }
     }
 }
@@ -569,14 +676,29 @@ pub(crate) fn encode_service_response(temperature: Result<f32>) -> [u8; 3] {
 }
 
 fn decode_service_response(response: &[u8]) -> Result<u32> {
-    ensure!(response.len() == 3, "CPU 温度服务返回了错误的响应长度");
-    ensure!(response[0] == RESPONSE_OK, "CPU 温度服务当前没有有效读数");
+    ensure!(
+        response.len() == 3,
+        "{}",
+        t!("temperature.response_length_invalid")
+    );
+    ensure!(
+        response[0] == RESPONSE_OK,
+        "{}",
+        t!("temperature.no_valid_reading")
+    );
     Ok(u16::from_le_bytes([response[1], response[2]]) as u32)
 }
 
 fn check_hresult(result: i32, action: &str) -> Result<()> {
     if result < 0 {
-        bail!("{action}（HRESULT 0x{:08X}）", result as u32);
+        bail!(
+            "{}",
+            t!(
+                "temperature.hresult_failed",
+                action = action,
+                code = format!("{:08X}", result as u32)
+            )
+        );
     }
     Ok(())
 }

@@ -80,6 +80,17 @@ pub(crate) fn tr_with(key: &str, arguments: &[(&str, &str)]) -> String {
     substitute(catalog().message(key), arguments)
 }
 
+/// `t!("键")` 或 `t!("键", 名称 = 值, …)`：取一条界面文字，并按名称填入占位符。
+macro_rules! t {
+    ($key:literal) => {
+        $crate::i18n::tr($key)
+    };
+    ($key:literal, $($name:ident = $value:expr),+ $(,)?) => {
+        $crate::i18n::tr_with($key, &[$((stringify!($name), &$value.to_string())),+])
+    };
+}
+pub(crate) use t;
+
 fn locale_tag(language_id: u16) -> &'static str {
     let primary_language = language_id & 0x3ff;
     LOCALES
@@ -170,6 +181,40 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// 源码里引用的每个消息键都必须存在于英文目录，目录里也不能留下无人使用的键。
+    #[test]
+    fn source_keys_and_the_catalog_agree() {
+        let mut used = BTreeSet::new();
+        let source_directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for entry in std::fs::read_dir(source_directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|extension| extension != "rs") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap();
+            for marker in ["t!(", "tr(", "tr_with("] {
+                for part in source.split(marker).skip(1) {
+                    if let Some(key) = part
+                        .trim_start()
+                        .strip_prefix('"')
+                        .and_then(|rest| rest.split_once('"'))
+                        .map(|(key, _)| key)
+                        && key.contains('.')
+                        && key
+                            .chars()
+                            .all(|character| matches!(character, 'a'..='z' | '0'..='9' | '_' | '.'))
+                    {
+                        used.insert(key.to_owned());
+                    }
+                }
+            }
+        }
+        // 本文件的测试里故意查找一个不存在的键。
+        used.remove("tray.no_such_key");
+        let defined = messages(FALLBACK_TAG).into_keys().collect::<BTreeSet<_>>();
+        assert_eq!(used, defined);
     }
 
     #[test]

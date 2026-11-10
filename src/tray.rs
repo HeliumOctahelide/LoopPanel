@@ -43,7 +43,7 @@ use windows_sys::Win32::{
 
 use crate::{
     display,
-    i18n::{tr, tr_with},
+    i18n::{t, tr, tr_with},
     process::DisplayLock,
     startup, temperature, temperature_service,
     win::{system_dll, wide},
@@ -72,13 +72,17 @@ pub fn run() -> Result<()> {
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("looppanel.toml");
     let taskbar_created = unsafe { RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()) };
-    ensure!(taskbar_created != 0, "无法注册 TaskbarCreated 消息");
+    ensure!(
+        taskbar_created != 0,
+        "{}",
+        t!("tray.error.taskbar_message_failed")
+    );
 
     let instance = unsafe { GetModuleHandleW(ptr::null()) };
     ensure!(
         !instance.is_null(),
-        "无法取得程序模块句柄：{}",
-        last_error()
+        "{}",
+        t!("tray.error.module_handle_failed", error = last_error())
     );
     let class_name = wide(WINDOW_CLASS);
     let class = WNDCLASSW {
@@ -95,11 +99,15 @@ pub fn run() -> Result<()> {
     };
     ensure!(
         unsafe { RegisterClassW(&class) } != 0,
-        "无法注册托盘窗口：{}",
-        last_error()
+        "{}",
+        t!("tray.error.window_class_failed", error = last_error())
     );
     let icon = load_application_icon();
-    ensure!(!icon.is_null(), "无法加载托盘图标：{}", last_error());
+    ensure!(
+        !icon.is_null(),
+        "{}",
+        t!("tray.error.icon_load_failed", error = last_error())
+    );
 
     let mut state = Box::new(AppState {
         executable,
@@ -129,7 +137,11 @@ pub fn run() -> Result<()> {
             state_pointer.cast(),
         )
     };
-    ensure!(!window.is_null(), "无法创建托盘窗口：{}", last_error());
+    ensure!(
+        !window.is_null(),
+        "{}",
+        t!("tray.error.window_create_failed", error = last_error())
+    );
 
     let result = (|| -> Result<()> {
         add_icon(state_pointer, window)?;
@@ -141,7 +153,10 @@ pub fn run() -> Result<()> {
         loop {
             let result = unsafe { GetMessageW(&mut message, ptr::null_mut(), 0, 0) };
             if result == -1 {
-                bail!("读取托盘消息失败：{}", last_error());
+                bail!(
+                    "{}",
+                    t!("tray.error.message_read_failed", error = last_error())
+                );
             }
             if result == 0 {
                 break;
@@ -229,7 +244,7 @@ impl AppState {
         };
         let result = worker
             .join()
-            .unwrap_or_else(|_| Err(anyhow::anyhow!("显示线程意外结束")));
+            .unwrap_or_else(|_| Err(anyhow::anyhow!("{}", t!("tray.error.display_thread_ended"))));
         if matches!(self.display_state, DisplayState::Exiting) {
             return WorkerCompletion::DestroyWindow;
         }
@@ -289,7 +304,11 @@ fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POIN
         )
     };
     let menu = unsafe { CreatePopupMenu() };
-    ensure!(!menu.is_null(), "无法创建托盘菜单：{}", last_error());
+    ensure!(
+        !menu.is_null(),
+        "{}",
+        t!("tray.error.menu_create_failed", error = last_error())
+    );
     let menu = Menu(menu);
 
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &status)?;
@@ -386,15 +405,16 @@ fn install_temperature_service(executable: &std::path::Path) -> Result<()> {
     let service = executable.with_file_name("looppanel-temperature-service.exe");
     ensure!(
         service.is_file(),
-        "找不到温度服务安装程序：{}",
-        service.display()
+        "{}",
+        t!("tray.error.installer_not_found", path = service.display())
     );
     run_elevated_and_wait(&service, "install")?;
     ensure!(
         temperature_service::is_installed(),
-        "CPU 温度服务安装程序已经结束，但服务仍未安装"
+        "{}",
+        t!("tray.error.service_not_installed")
     );
-    temperature::service_sample().context("CPU 温度服务已安装，但普通权限读取尚未就绪")?;
+    temperature::service_sample().with_context(|| t!("tray.error.service_not_readable"))?;
     Ok(())
 }
 
@@ -419,29 +439,37 @@ fn run_elevated_and_wait(path: &std::path::Path, parameters: &str) -> Result<()>
             bail!("{}", tr("tray.install.cancelled"));
         }
         bail!(
-            "无法启动 CPU 温度服务安装程序：{}",
-            std::io::Error::from_raw_os_error(error as i32)
+            "{}",
+            t!(
+                "tray.error.installer_launch_failed",
+                error = std::io::Error::from_raw_os_error(error as i32)
+            )
         );
     }
     ensure!(
         !info.hProcess.is_null(),
-        "CPU 温度服务安装程序没有返回可等待的进程句柄"
+        "{}",
+        t!("tray.error.installer_no_handle")
     );
     let process = ProcessHandle(info.hProcess);
     ensure!(
         unsafe { WaitForSingleObject(process.0, INFINITE) } == WAIT_OBJECT_0,
-        "等待 CPU 温度服务安装程序结束失败：{}",
-        last_error()
+        "{}",
+        t!("tray.error.installer_wait_failed", error = last_error())
     );
     let mut exit_code = 0_u32;
     ensure!(
         unsafe { GetExitCodeProcess(process.0, &mut exit_code) } != 0,
-        "无法读取 CPU 温度服务安装程序退出码：{}",
-        last_error()
+        "{}",
+        t!(
+            "tray.error.installer_exit_code_failed",
+            error = last_error()
+        )
     );
     ensure!(
         exit_code == 0,
-        "CPU 温度服务安装没有成功完成（退出码 {exit_code}）"
+        "{}",
+        t!("tray.error.installer_failed", exit_code = exit_code)
     );
     Ok(())
 }
@@ -450,13 +478,15 @@ fn add_icon(state: *mut AppState, window: HWND) -> Result<()> {
     let mut data = unsafe { (&*state).icon_data(window) };
     ensure!(
         unsafe { Shell_NotifyIconW(NIM_ADD, &data) } != 0,
-        "无法添加托盘图标"
+        "{}",
+        t!("tray.error.icon_add_failed")
     );
     unsafe { (*state).icon_added = true };
     data.Anonymous.uVersion = NOTIFYICON_VERSION_4;
     ensure!(
         unsafe { Shell_NotifyIconW(NIM_SETVERSION, &data) } != 0,
-        "无法设置托盘图标版本"
+        "{}",
+        t!("tray.error.icon_version_failed")
     );
     Ok(())
 }
@@ -614,8 +644,8 @@ fn append_menu(
     let text = wide(text);
     ensure!(
         unsafe { AppendMenuW(menu, flags, id, text.as_ptr()) } != 0,
-        "无法添加托盘菜单项：{}",
-        last_error()
+        "{}",
+        t!("tray.error.menu_item_failed", error = last_error())
     );
     Ok(())
 }
@@ -647,7 +677,11 @@ fn execute(path: &std::path::Path, parameters: Option<&str>, operation: &str) ->
             SW_SHOWNORMAL,
         )
     };
-    ensure!(result as usize > 32, "无法打开配置文件");
+    ensure!(
+        result as usize > 32,
+        "{}",
+        t!("tray.error.config_open_failed")
+    );
     Ok(())
 }
 
