@@ -5,7 +5,7 @@ use std::{
     ptr,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
 };
@@ -44,8 +44,8 @@ use windows_sys::Win32::{
 use crate::{
     display,
     i18n::{t, tr, tr_with},
-    layout::Layout,
     process::DisplayLock,
+    settings::{DisplaySettings, Layout, TemperatureUnit},
     startup, temperature, temperature_service,
     win::{system_dll, wide},
 };
@@ -65,6 +65,8 @@ const ID_EXIT: u32 = 1004;
 const ID_INSTALL_TEMPERATURE: u32 = 1005;
 const ID_LAYOUT_DEFAULT: u32 = 1006;
 const ID_LAYOUT_SIMPLE: u32 = 1007;
+const ID_UNIT_CELSIUS: u32 = 1008;
+const ID_UNIT_FAHRENHEIT: u32 = 1009;
 
 pub fn run() -> Result<()> {
     let _display_lock = DisplayLock::acquire()?;
@@ -117,7 +119,7 @@ pub fn run() -> Result<()> {
         config_file,
         display_state: DisplayState::Connecting,
         stop: Arc::new(AtomicBool::new(false)),
-        layout: Arc::new(AtomicU8::new(Layout::load() as u8)),
+        settings: Arc::new(DisplaySettings::load()),
         worker: None,
         taskbar_created,
         icon,
@@ -209,7 +211,7 @@ struct AppState {
     config_file: PathBuf,
     display_state: DisplayState,
     stop: Arc<AtomicBool>,
-    layout: Arc<AtomicU8>,
+    settings: Arc<DisplaySettings>,
     worker: Option<JoinHandle<Result<()>>>,
     taskbar_created: u32,
     icon: windows_sys::Win32::UI::WindowsAndMessaging::HICON,
@@ -224,10 +226,10 @@ impl AppState {
         self.display_state = DisplayState::Connecting;
         self.stop = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&self.stop);
-        let layout = Arc::clone(&self.layout);
+        let settings = Arc::clone(&self.settings);
         let window_value = window as usize;
         self.worker = Some(thread::spawn(move || {
-            let result = display::run_until(None, &stop, &layout, || unsafe {
+            let result = display::run_until(None, &stop, &settings, || unsafe {
                 PostMessageW(window_value as HWND, WM_DISPLAY_READY, 0, 0);
             });
             unsafe {
@@ -238,14 +240,11 @@ impl AppState {
         true
     }
 
-    /// 保存选择并通知显示线程立即换布局。
-    fn select_layout(&self, layout: Layout) -> Result<()> {
-        layout.save()?;
-        self.layout.store(layout as u8, Ordering::Relaxed);
+    /// 显示选项保存之后，唤醒显示线程立即重画。
+    fn wake_worker(&self) {
         if let Some(worker) = &self.worker {
             worker.thread().unpark();
         }
-        Ok(())
     }
 
     fn display_ready(&mut self) -> bool {
@@ -312,15 +311,18 @@ impl AppState {
 }
 
 fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
-    let (status, failed, executable, config_file) = unsafe {
+    let (status, failed, executable, config_file, settings) = unsafe {
         let state = &*state;
         (
             state.status_text(),
             matches!(state.display_state, DisplayState::Failed(_)),
             state.executable.clone(),
             state.config_file.clone(),
+            Arc::clone(&state.settings),
         )
     };
+    let layout = settings.layout();
+    let unit = settings.temperature_unit();
     let menu = unsafe { CreatePopupMenu() };
     ensure!(
         !menu.is_null(),
@@ -332,7 +334,10 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &status)?;
     let temperature_installed = temperature_service::is_installed();
     let temperature = match temperature::service_sample() {
-        Ok(value) => tr_with("tray.temperature.value", &[("celsius", &value.to_string())]),
+        Ok(value) => tr_with(
+            "tray.temperature.value",
+            &[("temperature", &unit.format(value))],
+        ),
         Err(_) if temperature_installed => tr("tray.temperature.unavailable"),
         Err(_) => tr("tray.temperature.not_installed"),
     };
@@ -360,8 +365,38 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             &tr("tray.menu.install_temperature"),
         )?;
     }
-    let layout = Layout::from_u8(unsafe { (&*state).layout.load(Ordering::Relaxed) });
-    append_layout_menu(menu.0, layout)?;
+    append_choice_menu(
+        menu.0,
+        &tr("tray.menu.display"),
+        &[
+            (
+                ID_LAYOUT_DEFAULT,
+                tr("tray.menu.display_default"),
+                layout == Layout::Default,
+            ),
+            (
+                ID_LAYOUT_SIMPLE,
+                tr("tray.menu.display_simple"),
+                layout == Layout::Simple,
+            ),
+        ],
+    )?;
+    append_choice_menu(
+        menu.0,
+        &tr("tray.menu.unit"),
+        &[
+            (
+                ID_UNIT_CELSIUS,
+                tr("tray.menu.unit_celsius"),
+                unit == TemperatureUnit::Celsius,
+            ),
+            (
+                ID_UNIT_FAHRENHEIT,
+                tr("tray.menu.unit_fahrenheit"),
+                unit == TemperatureUnit::Fahrenheit,
+            ),
+        ],
+    )?;
     let startup_enabled = startup::is_enabled(&executable)?;
     append_menu(
         menu.0,
@@ -403,8 +438,15 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             }
         }
         ID_INSTALL_TEMPERATURE => install_temperature_service(&executable)?,
-        ID_LAYOUT_DEFAULT => unsafe { (&*state).select_layout(Layout::Default)? },
-        ID_LAYOUT_SIMPLE => unsafe { (&*state).select_layout(Layout::Simple)? },
+        ID_LAYOUT_DEFAULT | ID_LAYOUT_SIMPLE | ID_UNIT_CELSIUS | ID_UNIT_FAHRENHEIT => {
+            match command {
+                ID_LAYOUT_DEFAULT => settings.set_layout(Layout::Default)?,
+                ID_LAYOUT_SIMPLE => settings.set_layout(Layout::Simple)?,
+                ID_UNIT_CELSIUS => settings.set_temperature_unit(TemperatureUnit::Celsius)?,
+                _ => settings.set_temperature_unit(TemperatureUnit::Fahrenheit)?,
+            }
+            unsafe { (&*state).wake_worker() };
+        }
         ID_EXIT => {
             let destroy = unsafe { (&mut *state).request_exit() };
             if destroy {
@@ -643,10 +685,11 @@ unsafe extern "system" fn window_proc(
     }
 }
 
-/// “显示”子菜单：当前布局前打勾。
-fn append_layout_menu(
+/// 追加一个单选子菜单；`choices` 为（命令号，文字，是否当前选中）。
+fn append_choice_menu(
     menu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-    current: Layout,
+    title: &str,
+    choices: &[(u32, String, bool)],
 ) -> Result<()> {
     let submenu = unsafe { CreatePopupMenu() };
     ensure!(
@@ -656,20 +699,15 @@ fn append_layout_menu(
     );
     // 挂到父菜单之前由这里负责销毁；挂上之后随父菜单一起销毁。
     let submenu = Menu(submenu);
-    let checked = |layout| if layout == current { MF_CHECKED } else { 0 };
-    append_menu(
-        submenu.0,
-        MF_STRING | checked(Layout::Default),
-        ID_LAYOUT_DEFAULT as usize,
-        &tr("tray.menu.display_default"),
-    )?;
-    append_menu(
-        submenu.0,
-        MF_STRING | checked(Layout::Simple),
-        ID_LAYOUT_SIMPLE as usize,
-        &tr("tray.menu.display_simple"),
-    )?;
-    append_menu(menu, MF_POPUP, submenu.0 as usize, &tr("tray.menu.display"))?;
+    for (id, label, selected) in choices {
+        append_menu(
+            submenu.0,
+            MF_STRING | if *selected { MF_CHECKED } else { 0 },
+            *id as usize,
+            label,
+        )?;
+    }
+    append_menu(menu, MF_POPUP, submenu.0 as usize, title)?;
     std::mem::forget(submenu);
     Ok(())
 }

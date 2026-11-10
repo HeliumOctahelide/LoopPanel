@@ -1,5 +1,5 @@
 use std::{
-    sync::atomic::{AtomicBool, AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
 };
@@ -9,12 +9,12 @@ use anyhow::Result;
 use crate::{
     audio::{BAND_COUNT, OutputSpectrum, SAMPLE_INTERVAL},
     config::Config,
-    layout::Layout,
     media::Background,
     monitor::Monitor,
     process,
     protocol::{HEIGHT, WIDTH, frame_packet, rgba_to_uyvy},
     render::Renderer,
+    settings::{DisplaySettings, Layout},
     transport::Tm360,
 };
 
@@ -28,13 +28,15 @@ fn renderer_for(config: &Config, layout: Layout) -> Result<Renderer> {
 pub fn run_until(
     config_path: Option<&str>,
     stop: &AtomicBool,
-    layout: &AtomicU8,
+    settings: &DisplaySettings,
     on_started: impl FnOnce(),
 ) -> Result<()> {
     let (config, _) = Config::load(config_path)?;
     let background = Background::load(config.background.as_deref())?;
-    let mut active_layout = Layout::from_u8(layout.load(Ordering::Relaxed));
+    let mut active_layout = settings.layout();
+    let mut active_unit = settings.temperature_unit();
     let mut renderer = renderer_for(&config, active_layout)?;
+    renderer.set_temperature_unit(active_unit);
     let mut monitor = Monitor::new();
     monitor.prime();
     let mut snapshot = monitor.sample();
@@ -94,10 +96,11 @@ pub fn run_until(
             break;
         }
 
-        // 托盘菜单切换布局后会唤醒本线程：换一个渲染器并立即重画，不重新初始化设备。
-        let requested_layout = Layout::from_u8(layout.load(Ordering::Relaxed));
-        let layout_changed = requested_layout != active_layout;
-        if layout_changed {
+        // 托盘菜单改动显示选项后会唤醒本线程：立即重画，不重新初始化设备。
+        let requested_layout = settings.layout();
+        let requested_unit = settings.temperature_unit();
+        let settings_changed = requested_layout != active_layout || requested_unit != active_unit;
+        if requested_layout != active_layout {
             active_layout = requested_layout;
             renderer = renderer_for(&config, active_layout)?;
             audio_spectrum = if renderer.audio_enabled() {
@@ -106,6 +109,10 @@ pub fn run_until(
                 None
             };
             audio_bands = [0.0; BAND_COUNT];
+        }
+        if settings_changed {
+            active_unit = requested_unit;
+            renderer.set_temperature_unit(active_unit);
             renderer.update(&config, &snapshot)?;
         }
 
@@ -139,7 +146,7 @@ pub fn run_until(
                 }
             }
         }
-        let mut content_changed = audio_changed || layout_changed;
+        let mut content_changed = audio_changed || settings_changed;
         if content_due {
             frame_index = frame_index.wrapping_add(1);
             next_content = now + background.delay(frame_index, config.fps);

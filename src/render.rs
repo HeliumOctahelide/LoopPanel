@@ -11,6 +11,7 @@ use crate::{
     i18n::t,
     monitor::Snapshot,
     protocol::{HEIGHT, WIDTH},
+    settings::TemperatureUnit,
 };
 
 const AUDIO_LEFT: i32 = 10;
@@ -32,6 +33,7 @@ pub struct Renderer {
     svg_options: usvg::Options<'static>,
     overlay: RgbaImage,
     audio_enabled: bool,
+    temperature_unit: TemperatureUnit,
 }
 
 impl Renderer {
@@ -99,7 +101,13 @@ impl Renderer {
             svg_options,
             overlay: RgbaImage::new(WIDTH as u32, HEIGHT as u32),
             audio_enabled,
+            temperature_unit: TemperatureUnit::default(),
         })
+    }
+
+    /// 之后的 `update` 按这个单位填充模板里的 `temperature` 字段。
+    pub fn set_temperature_unit(&mut self, unit: TemperatureUnit) {
+        self.temperature_unit = unit;
     }
 
     pub fn audio_enabled(&self) -> bool {
@@ -139,7 +147,9 @@ impl Renderer {
 
     fn render_svg(&self, config: &Config, snapshot: &Snapshot) -> Result<String> {
         let custom_line_count = config.custom_lines.len().min(2);
+        let unit = self.temperature_unit;
         let context = DashboardContext {
+            temperature_unit: unit.symbol(),
             title: &config.title,
             time: local_time(),
             show_clock: config.show_clock,
@@ -147,6 +157,7 @@ impl Renderer {
             cpu: CpuView {
                 load_percent: snapshot.cpu_percent,
                 temperature_c: snapshot.cpu_temperature,
+                temperature: snapshot.cpu_temperature.map(|value| unit.convert(value)),
                 performance_frequency_ghz: snapshot.cpu_p_mhz.map(mhz_to_ghz),
                 efficiency_frequency_ghz: snapshot.cpu_e_mhz.map(mhz_to_ghz),
                 performance_cores: core_views(&snapshot.cpu_p_core_loads, 8),
@@ -161,6 +172,7 @@ impl Renderer {
             gpu: GpuView {
                 load_percent: snapshot.gpu_percent,
                 temperature_c: snapshot.gpu_temperature,
+                temperature: snapshot.gpu_temperature.map(|value| unit.convert(value)),
                 power_w: snapshot.gpu_power_w,
                 power_limit_w: snapshot.gpu_power_limit_w,
                 memory: gpu_memory(snapshot),
@@ -190,6 +202,7 @@ struct DashboardContext<'a> {
     time: String,
     show_clock: bool,
     show_sensors: bool,
+    temperature_unit: &'static str,
     cpu: CpuView,
     memory: MemoryView,
     gpu: GpuView,
@@ -201,6 +214,7 @@ struct DashboardContext<'a> {
 struct CpuView {
     load_percent: Option<f32>,
     temperature_c: Option<u32>,
+    temperature: Option<i32>,
     performance_frequency_ghz: Option<f32>,
     efficiency_frequency_ghz: Option<f32>,
     performance_cores: Vec<CoreView>,
@@ -224,6 +238,7 @@ struct MemoryView {
 struct GpuView {
     load_percent: Option<u32>,
     temperature_c: Option<u32>,
+    temperature: Option<i32>,
     power_w: Option<f32>,
     power_limit_w: Option<f32>,
     memory: Option<GpuMemoryView>,
@@ -354,7 +369,7 @@ mod tests {
     use super::{
         AUDIO_ACTIVE, AUDIO_INACTIVE, Renderer, bar_width, core_views, draw_audio_spectrum,
     };
-    use crate::{config::Config, monitor::Snapshot};
+    use crate::{config::Config, monitor::Snapshot, settings::TemperatureUnit};
 
     #[test]
     fn renders_default_dashboard_around_a_transparent_image_slot() {
@@ -397,9 +412,16 @@ mod tests {
             ..Snapshot::default()
         };
         let svg = renderer.render_svg(&config, &snapshot).unwrap();
-        assert!(svg.contains(">47°<"));
+        assert!(svg.contains(">47°C<"));
         assert!(svg.contains(">12%<"));
         assert!(!svg.contains("GPU"));
+
+        // 华氏只换显示值；颜色阈值仍按摄氏判断（47°C 属于最低一档）。
+        renderer.set_temperature_unit(TemperatureUnit::Fahrenheit);
+        let fahrenheit = renderer.render_svg(&config, &snapshot).unwrap();
+        assert!(fahrenheit.contains(">117°F<"));
+        assert!(fahrenheit.contains("#3ddc97"));
+        renderer.set_temperature_unit(TemperatureUnit::Celsius);
 
         // 整个画面由不透明底色覆盖，背景图不会透出来。
         renderer.update(&config, &snapshot).unwrap();

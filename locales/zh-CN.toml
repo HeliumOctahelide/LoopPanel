@@ -9,7 +9,7 @@ failed = "LoopPanel：连接失败（{error}）"
 worker_stopped = "显示线程已经停止"
 
 [tray.temperature]
-value = "CPU 温度：{celsius}°C"
+value = "CPU 温度：{temperature}"
 unavailable = "CPU 温度：服务暂时不可用"
 not_installed = "CPU 温度：尚未安装温度支持"
 
@@ -22,6 +22,9 @@ exit = "退出"
 display = "显示"
 display_default = "默认"
 display_simple = "简洁"
+unit = "单位"
+unit_celsius = "摄氏"
+unit_fahrenheit = "华氏"
 
 [tray.install]
 cancelled = "CPU 温度支持安装已取消，LoopPanel 未启动"
@@ -236,5 +239,5 @@ canvas_alloc_failed = "无法分配 {width}×{height} RGBA 画布"
 pixel_buffer_mismatch = "SVG 渲染器返回了错误的像素缓冲区长度"
 template_render_failed = "无法渲染 SVG 模板"
 
-[layout]
-save_failed = "无法保存显示布局设置：{error}"
+[settings]
+save_failed = "无法保存显示设置：{error}"

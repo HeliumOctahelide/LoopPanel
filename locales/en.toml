@@ -9,7 +9,7 @@ failed = "LoopPanel: connection failed ({error})"
 worker_stopped = "The display thread has stopped"
 
 [tray.temperature]
-value = "CPU temperature: {celsius}°C"
+value = "CPU temperature: {temperature}"
 unavailable = "CPU temperature: service temporarily unavailable"
 not_installed = "CPU temperature: support not installed"
 
@@ -22,6 +22,9 @@ exit = "Exit"
 display = "Display"
 display_default = "Default"
 display_simple = "Simple"
+unit = "Unit"
+unit_celsius = "Celsius"
+unit_fahrenheit = "Fahrenheit"
 
 [tray.install]
 cancelled = "CPU temperature support installation was cancelled; LoopPanel did not start"
@@ -236,5 +239,5 @@ canvas_alloc_failed = "Cannot allocate {width}×{height} RGBA canvas"
 pixel_buffer_mismatch = "SVG renderer returned a pixel buffer of the wrong length"
 template_render_failed = "Cannot render SVG template"
 
-[layout]
-save_failed = "Cannot save the display layout setting: {error}"
+[settings]
+save_failed = "Cannot save the display setting: {error}"

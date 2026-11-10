@@ -4,7 +4,7 @@
 
   <g font-family="sans-serif" text-anchor="middle">
     <text x="240" y="52" font-size="34" letter-spacing="3" fill="#8b96a1">CPU TEMP</text>
-    <text x="240" y="206" font-size="170" fill="{% if cpu.temperature_c is none %}#7f8790{% elif cpu.temperature_c >= 85 %}#ff5a5a{% elif cpu.temperature_c >= 71 %}#ff8c42{% elif cpu.temperature_c >= 56 %}#f2c14e{% else %}#3ddc97{% endif %}">{% if cpu.temperature_c is none %}--{% else %}{{ "%d"|format(cpu.temperature_c) }}°{% endif %}</text>
+    <text x="240" y="206" font-size="170" fill="{% if cpu.temperature_c is none %}#7f8790{% elif cpu.temperature_c >= 85 %}#ff5a5a{% elif cpu.temperature_c >= 71 %}#ff8c42{% elif cpu.temperature_c >= 56 %}#f2c14e{% else %}#3ddc97{% endif %}">{% if cpu.temperature_c is none %}--{% else %}{{ "%d"|format(cpu.temperature) }}°{{ temperature_unit }}{% endif %}</text>
 
     <text x="240" y="292" font-size="34" letter-spacing="3" fill="#8b96a1">CPU LOAD</text>
     <text x="240" y="446" font-size="170" fill="#f2f4f6">{% if cpu.load_percent is none %}--{% else %}{{ "%.0f"|format(cpu.load_percent) }}%{% endif %}</text>
