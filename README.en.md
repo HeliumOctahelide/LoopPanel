@@ -29,6 +29,8 @@ The repository is licensed under the MIT License. For the licenses of third-part
 - A 480×270 16:9 central image area, and a freely editable 480×480 SVG dashboard layer;
 - CPU, RAM, NVIDIA or AMD Radeon GPU, video memory, network, and disk information;
 - WASAPI loopback capture, 1024-point FFT, and a 16-band real-time audio spectrum;
+- A tray menu to switch the display layout (the default dashboard, or a simple large-digit layout showing only CPU temperature and load) and the temperature unit (Celsius / Fahrenheit);
+- Tray text and messages that follow the Windows display language: Simplified Chinese, English, Korean;
 - A single-instance display lock and a check for conflicts with the official software.
 
 The program contains no browser engine, web service, account, telemetry, auto-update, or ARGB control code.
@@ -90,6 +92,7 @@ While running, right-click the tray icon to:
 
 - view the display and CPU temperature status;
 - open `looppanel.toml`;
+- switch between the default and simple layouts under "Display", and between Celsius and Fahrenheit under "Unit"; the choice applies immediately and is remembered;
 - enable or disable "start at login";
 - retry after a connection failure;
 - exit and release the USB interface.

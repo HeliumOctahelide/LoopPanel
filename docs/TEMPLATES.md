@@ -22,6 +22,7 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 | `time` | string | 本地时间，格式 `HH:MM:SS` |
 | `show_clock` | bool | 配置中的时钟开关 |
 | `show_sensors` | bool | 配置中的传感器开关 |
+| `temperature_unit` | string | 托盘“单位”菜单的选择：`C` 或 `F` |
 | `custom_lines` | list[string] | 最多两项 |
 
 ### CPU
@@ -29,7 +30,8 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 | 表达式 | 类型 |
 |---|---|
 | `cpu.load_percent` | float，0–100 或 `none`；Windows Processor Utility，总体口径与任务管理器一致 |
-| `cpu.temperature_c` | integer 或 `none`；Intel 为 Package 温度，AMD 为 Tctl/Tdie |
+| `cpu.temperature_c` | integer 或 `none`；摄氏度，Intel 为 Package 温度，AMD 为 Tctl/Tdie |
+| `cpu.temperature` | integer 或 `none`；按 `temperature_unit` 换算后的显示值 |
 | `cpu.performance_frequency_ghz` | float 或 `none` |
 | `cpu.efficiency_frequency_ghz` | float 或 `none` |
 | `cpu.performance_cores` | list of `{ opacity }`，最多 8 项 |
@@ -53,7 +55,8 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 | 表达式 | 类型 |
 |---|---|
 | `gpu.load_percent` | integer 或 `none` |
-| `gpu.temperature_c` | integer 或 `none` |
+| `gpu.temperature_c` | integer 或 `none`；摄氏度 |
+| `gpu.temperature` | integer 或 `none`；按 `temperature_unit` 换算后的显示值 |
 | `gpu.power_w` | float 或 `none` |
 | `gpu.power_limit_w` | float 或 `none` |
 | `gpu.memory` | object 或 `none` |
@@ -73,6 +76,10 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 - `io.network_up_mib_s`
 - `io.disk_read_mib_s`
 - `io.disk_write_mib_s`
+
+显示温度时使用 `temperature` 并配合 `temperature_unit`；颜色阈值等判断继续使用始终为摄氏度的 `temperature_c`。
+
+托盘“显示”菜单选择“简洁”时，程序改用内置的 `simple.svg.jinja`（只有 CPU 温度和占用率），不读取配置里的 `template`，也不绘制背景和音频频谱。
 
 ## 常用语法
 
