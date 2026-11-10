@@ -91,7 +91,7 @@ If the user cancels UAC, or the temperature service installation or self-check f
 While running, right-click the tray icon to:
 
 - view the display and CPU temperature status;
-- open `looppanel.toml`;
+- open `looppanel.toml`, and apply edits immediately with "Reload settings";
 - switch between the default and simple layouts under "Display", and between Celsius and Fahrenheit under "Unit"; the choice applies immediately and is remembered;
 - turn the full-screen background image / GIF of the simple layout on or off with "Background in simple layout" (the background is dimmed, and the digits have an outline and a shadow);
 - enable or disable "start at login";
@@ -126,7 +126,7 @@ show_sensors = true
 
 The background is fitted into the central 480×270 area with its aspect ratio preserved; the default template draws information in the areas above and below. GIFs are limited to 120 frames and are decoded at startup to limit resident memory. Official JONSBO assets are not included in this repository.
 
-After changing the configuration or template, exit from the tray and double-click `LoopPanel.exe` again to load the new content.
+After changing the configuration or template, choose "Reload settings" from the tray menu to apply it without exiting; if the new content has an error, the reason is shown and the current display is kept.
 
 The comments that ship in the configuration file are rewritten at startup in the Windows display language (Simplified Chinese, Korean, or English for everything else); comments you add yourself and all settings are left untouched.
 
