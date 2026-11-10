@@ -43,6 +43,7 @@ use windows_sys::Win32::{
 
 use crate::{
     display,
+    locale::Language,
     process::DisplayLock,
     startup, temperature, temperature_service,
     win::{system_dll, wide},
@@ -233,7 +234,7 @@ impl AppState {
             return WorkerCompletion::DestroyWindow;
         }
         self.display_state = DisplayState::Failed(match result {
-            Ok(()) => "显示线程已经停止".to_owned(),
+            Ok(()) => Language::current().text().worker_stopped.to_owned(),
             Err(error) => format!("{error:#}"),
         });
         WorkerCompletion::UpdateIcon
@@ -254,11 +255,13 @@ impl AppState {
     }
 
     fn status_text(&self) -> String {
+        let language = Language::current();
+        let text = language.text();
         match &self.display_state {
-            DisplayState::Connecting => "LoopPanel：正在连接".to_owned(),
-            DisplayState::Running => "LoopPanel：运行中".to_owned(),
-            DisplayState::Failed(error) => format!("LoopPanel：连接失败（{error}）"),
-            DisplayState::Exiting => "LoopPanel：正在退出".to_owned(),
+            DisplayState::Connecting => text.connecting.to_owned(),
+            DisplayState::Running => text.running.to_owned(),
+            DisplayState::Failed(error) => language.connection_failed(error),
+            DisplayState::Exiting => text.exiting.to_owned(),
         }
     }
 
@@ -293,23 +296,25 @@ fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POIN
 
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &status)?;
     let temperature_installed = temperature_service::is_installed();
+    let language = Language::current();
+    let text = language.text();
     let temperature = match temperature::service_sample() {
-        Ok(value) => format!("CPU 温度：{value}°C"),
-        Err(_) if temperature_installed => "CPU 温度：服务暂时不可用".to_owned(),
-        Err(_) => "CPU 温度：尚未安装温度支持".to_owned(),
+        Ok(value) => language.temperature(value),
+        Err(_) if temperature_installed => text.temperature_unavailable.to_owned(),
+        Err(_) => text.temperature_not_installed.to_owned(),
     };
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &temperature)?;
     append_menu(menu.0, MF_SEPARATOR, 0, "")?;
     if failed {
-        append_menu(menu.0, MF_STRING, ID_RETRY as usize, "重新连接")?;
+        append_menu(menu.0, MF_STRING, ID_RETRY as usize, text.reconnect)?;
     }
-    append_menu(menu.0, MF_STRING, ID_OPEN_CONFIG as usize, "打开配置文件")?;
+    append_menu(menu.0, MF_STRING, ID_OPEN_CONFIG as usize, text.open_config)?;
     if !temperature_installed {
         append_menu(
             menu.0,
             MF_STRING,
             ID_INSTALL_TEMPERATURE as usize,
-            "安装 CPU 温度支持…",
+            text.install_temperature,
         )?;
     }
     let startup_enabled = startup::is_enabled(&executable)?;
@@ -317,10 +322,10 @@ fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POIN
         menu.0,
         MF_STRING | if startup_enabled { MF_CHECKED } else { 0 },
         ID_STARTUP as usize,
-        "登录时自动启动",
+        text.start_at_login,
     )?;
     append_menu(menu.0, MF_SEPARATOR, 0, "")?;
-    append_menu(menu.0, MF_STRING, ID_EXIT as usize, "退出")?;
+    append_menu(menu.0, MF_STRING, ID_EXIT as usize, text.exit)?;
 
     let point = match notification_point {
         Some(point) => point,
@@ -405,7 +410,7 @@ fn run_elevated_and_wait(path: &std::path::Path, parameters: &str) -> Result<()>
     if unsafe { ShellExecuteExW(&mut info) } == 0 {
         let error = unsafe { GetLastError() };
         if error == ERROR_CANCELLED {
-            bail!("CPU 温度支持安装已取消，LoopPanel 未启动");
+            bail!("{}", Language::current().text().install_cancelled);
         }
         bail!(
             "无法启动 CPU 温度服务安装程序：{}",

@@ -3,6 +3,7 @@ pub mod audio;
 pub mod config;
 pub mod display;
 pub mod io_metrics;
+mod locale;
 pub mod media;
 pub mod monitor;
 pub mod process;
