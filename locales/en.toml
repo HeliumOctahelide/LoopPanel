@@ -1,0 +1,24 @@
+# LoopPanel UI messages: English. This is the fallback for missing keys and unlisted languages.
+# Placeholders are written as {name}; every locale must use the same keys and placeholders.
+
+[tray.status]
+connecting = "LoopPanel: connecting"
+running = "LoopPanel: running"
+exiting = "LoopPanel: exiting"
+failed = "LoopPanel: connection failed ({error})"
+worker_stopped = "The display thread has stopped"
+
+[tray.temperature]
+value = "CPU temperature: {celsius}°C"
+unavailable = "CPU temperature: service temporarily unavailable"
+not_installed = "CPU temperature: support not installed"
+
+[tray.menu]
+reconnect = "Reconnect"
+open_config = "Open configuration file"
+install_temperature = "Install CPU temperature support…"
+start_at_login = "Start at login"
+exit = "Exit"
+
+[tray.install]
+cancelled = "CPU temperature support installation was cancelled; LoopPanel did not start"

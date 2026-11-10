@@ -1,0 +1,24 @@
+# LoopPanel 界面文字：简体中文。
+# 占位符写作 {name}；键和占位符必须与 en.toml 一致。
+
+[tray.status]
+connecting = "LoopPanel：正在连接"
+running = "LoopPanel：运行中"
+exiting = "LoopPanel：正在退出"
+failed = "LoopPanel：连接失败（{error}）"
+worker_stopped = "显示线程已经停止"
+
+[tray.temperature]
+value = "CPU 温度：{celsius}°C"
+unavailable = "CPU 温度：服务暂时不可用"
+not_installed = "CPU 温度：尚未安装温度支持"
+
+[tray.menu]
+reconnect = "重新连接"
+open_config = "打开配置文件"
+install_temperature = "安装 CPU 温度支持…"
+start_at_login = "登录时自动启动"
+exit = "退出"
+
+[tray.install]
+cancelled = "CPU 温度支持安装已取消，LoopPanel 未启动"

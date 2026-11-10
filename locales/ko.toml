@@ -1,0 +1,24 @@
+# LoopPanel UI 메시지: 한국어.
+# 자리표시자는 {name} 형식이며, 키와 자리표시자는 en.toml과 같아야 합니다.
+
+[tray.status]
+connecting = "LoopPanel: 연결 중"
+running = "LoopPanel: 실행 중"
+exiting = "LoopPanel: 종료 중"
+failed = "LoopPanel: 연결 실패({error})"
+worker_stopped = "디스플레이 스레드가 중지되었습니다"
+
+[tray.temperature]
+value = "CPU 온도: {celsius}°C"
+unavailable = "CPU 온도: 서비스를 일시적으로 사용할 수 없음"
+not_installed = "CPU 온도: 온도 지원이 설치되지 않음"
+
+[tray.menu]
+reconnect = "다시 연결"
+open_config = "설정 파일 열기"
+install_temperature = "CPU 온도 지원 설치…"
+start_at_login = "로그인 시 자동 시작"
+exit = "종료"
+
+[tray.install]
+cancelled = "CPU 온도 지원 설치가 취소되어 LoopPanel을 시작하지 않았습니다"

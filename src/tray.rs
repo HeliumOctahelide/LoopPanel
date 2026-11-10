@@ -43,7 +43,7 @@ use windows_sys::Win32::{
 
 use crate::{
     display,
-    locale::Language,
+    i18n::{tr, tr_with},
     process::DisplayLock,
     startup, temperature, temperature_service,
     win::{system_dll, wide},
@@ -234,7 +234,7 @@ impl AppState {
             return WorkerCompletion::DestroyWindow;
         }
         self.display_state = DisplayState::Failed(match result {
-            Ok(()) => Language::current().text().worker_stopped.to_owned(),
+            Ok(()) => tr("tray.status.worker_stopped"),
             Err(error) => format!("{error:#}"),
         });
         WorkerCompletion::UpdateIcon
@@ -255,13 +255,11 @@ impl AppState {
     }
 
     fn status_text(&self) -> String {
-        let language = Language::current();
-        let text = language.text();
         match &self.display_state {
-            DisplayState::Connecting => text.connecting.to_owned(),
-            DisplayState::Running => text.running.to_owned(),
-            DisplayState::Failed(error) => language.connection_failed(error),
-            DisplayState::Exiting => text.exiting.to_owned(),
+            DisplayState::Connecting => tr("tray.status.connecting"),
+            DisplayState::Running => tr("tray.status.running"),
+            DisplayState::Failed(error) => tr_with("tray.status.failed", &[("error", error)]),
+            DisplayState::Exiting => tr("tray.status.exiting"),
         }
     }
 
@@ -296,25 +294,33 @@ fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POIN
 
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &status)?;
     let temperature_installed = temperature_service::is_installed();
-    let language = Language::current();
-    let text = language.text();
     let temperature = match temperature::service_sample() {
-        Ok(value) => language.temperature(value),
-        Err(_) if temperature_installed => text.temperature_unavailable.to_owned(),
-        Err(_) => text.temperature_not_installed.to_owned(),
+        Ok(value) => tr_with("tray.temperature.value", &[("celsius", &value.to_string())]),
+        Err(_) if temperature_installed => tr("tray.temperature.unavailable"),
+        Err(_) => tr("tray.temperature.not_installed"),
     };
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &temperature)?;
     append_menu(menu.0, MF_SEPARATOR, 0, "")?;
     if failed {
-        append_menu(menu.0, MF_STRING, ID_RETRY as usize, text.reconnect)?;
+        append_menu(
+            menu.0,
+            MF_STRING,
+            ID_RETRY as usize,
+            &tr("tray.menu.reconnect"),
+        )?;
     }
-    append_menu(menu.0, MF_STRING, ID_OPEN_CONFIG as usize, text.open_config)?;
+    append_menu(
+        menu.0,
+        MF_STRING,
+        ID_OPEN_CONFIG as usize,
+        &tr("tray.menu.open_config"),
+    )?;
     if !temperature_installed {
         append_menu(
             menu.0,
             MF_STRING,
             ID_INSTALL_TEMPERATURE as usize,
-            text.install_temperature,
+            &tr("tray.menu.install_temperature"),
         )?;
     }
     let startup_enabled = startup::is_enabled(&executable)?;
@@ -322,10 +328,10 @@ fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POIN
         menu.0,
         MF_STRING | if startup_enabled { MF_CHECKED } else { 0 },
         ID_STARTUP as usize,
-        text.start_at_login,
+        &tr("tray.menu.start_at_login"),
     )?;
     append_menu(menu.0, MF_SEPARATOR, 0, "")?;
-    append_menu(menu.0, MF_STRING, ID_EXIT as usize, text.exit)?;
+    append_menu(menu.0, MF_STRING, ID_EXIT as usize, &tr("tray.menu.exit"))?;
 
     let point = match notification_point {
         Some(point) => point,
@@ -410,7 +416,7 @@ fn run_elevated_and_wait(path: &std::path::Path, parameters: &str) -> Result<()>
     if unsafe { ShellExecuteExW(&mut info) } == 0 {
         let error = unsafe { GetLastError() };
         if error == ERROR_CANCELLED {
-            bail!("{}", Language::current().text().install_cancelled);
+            bail!("{}", tr("tray.install.cancelled"));
         }
         bail!(
             "无法启动 CPU 温度服务安装程序：{}",
