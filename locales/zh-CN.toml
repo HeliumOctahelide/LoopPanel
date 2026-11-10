@@ -25,6 +25,7 @@ display_simple = "简洁"
 unit = "单位"
 unit_celsius = "摄氏"
 unit_fahrenheit = "华氏"
+simple_background = "简洁布局显示背景"
 
 [tray.install]
 cancelled = "CPU 温度支持安装已取消，LoopPanel 未启动"

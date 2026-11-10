@@ -9,7 +9,7 @@ use anyhow::Result;
 use crate::{
     audio::{BAND_COUNT, OutputSpectrum, SAMPLE_INTERVAL},
     config::Config,
-    media::Background,
+    media::{Background, Placement},
     monitor::Monitor,
     process,
     protocol::{HEIGHT, WIDTH, frame_packet, rgba_to_uyvy},
@@ -25,6 +25,19 @@ fn renderer_for(config: &Config, layout: Layout) -> Result<Renderer> {
     }
 }
 
+/// 单纯布局关闭背景时使用的底色，与模板里压暗背景的颜色相同。
+const SIMPLE_PLAIN_BACKGROUND: [u8; 4] = [14, 17, 20, 255];
+
+fn background_for(config: &Config, layout: Layout, simple_background: bool) -> Result<Background> {
+    match layout {
+        Layout::Default => Background::load(config.background.as_deref(), Placement::CenterBand),
+        Layout::Simple if simple_background => {
+            Background::load(config.background.as_deref(), Placement::FullScreen)
+        }
+        Layout::Simple => Ok(Background::solid(SIMPLE_PLAIN_BACKGROUND)),
+    }
+}
+
 pub fn run_until(
     config_path: Option<&str>,
     stop: &AtomicBool,
@@ -32,11 +45,12 @@ pub fn run_until(
     on_started: impl FnOnce(),
 ) -> Result<()> {
     let (config, _) = Config::load(config_path)?;
-    let background = Background::load(config.background.as_deref())?;
     let mut active_layout = settings.layout();
     let mut active_unit = settings.temperature_unit();
     let mut renderer = renderer_for(&config, active_layout)?;
     renderer.set_temperature_unit(active_unit);
+    let mut active_simple_background = settings.simple_background();
+    let mut background = background_for(&config, active_layout, active_simple_background)?;
     let mut monitor = Monitor::new();
     monitor.prime();
     let mut snapshot = monitor.sample();
@@ -66,7 +80,7 @@ pub fn run_until(
     on_started();
 
     let started = Instant::now();
-    let animated = background.is_animated();
+    let mut animated = background.is_animated();
     let sensor_interval = Duration::from_millis(config.sensor_interval_ms);
     let mut next_sensor = started + sensor_interval;
     let mut frame_index = 0_usize;
@@ -99,8 +113,12 @@ pub fn run_until(
         // 托盘菜单改动显示选项后会唤醒本线程：立即重画，不重新初始化设备。
         let requested_layout = settings.layout();
         let requested_unit = settings.temperature_unit();
-        let settings_changed = requested_layout != active_layout || requested_unit != active_unit;
-        if requested_layout != active_layout {
+        let requested_simple_background = settings.simple_background();
+        let layout_changed = requested_layout != active_layout;
+        let background_changed =
+            layout_changed || requested_simple_background != active_simple_background;
+        let settings_changed = background_changed || requested_unit != active_unit;
+        if layout_changed {
             active_layout = requested_layout;
             renderer = renderer_for(&config, active_layout)?;
             audio_spectrum = if renderer.audio_enabled() {
@@ -109,6 +127,14 @@ pub fn run_until(
                 None
             };
             audio_bands = [0.0; BAND_COUNT];
+        }
+        if background_changed {
+            // 两种布局摆放背景的方式不同，背景开关也会换素材：按当前选项重新载入。
+            active_simple_background = requested_simple_background;
+            background = background_for(&config, active_layout, active_simple_background)?;
+            animated = background.is_animated();
+            frame_index = 0;
+            next_content = Instant::now() + background.delay(0, config.fps);
         }
         if settings_changed {
             active_unit = requested_unit;

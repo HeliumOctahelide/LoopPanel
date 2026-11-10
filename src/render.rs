@@ -423,16 +423,19 @@ mod tests {
         assert!(fahrenheit.contains("#3ddc97"));
         renderer.set_temperature_unit(TemperatureUnit::Celsius);
 
-        // 整个画面由不透明底色覆盖，背景图不会透出来。
+        // 背景透过半透明底色显示出来，但被压暗以保证文字可读。
         renderer.update(&config, &snapshot).unwrap();
         let image = renderer.compose(
             RgbaImage::from_pixel(480, 480, Rgba([255, 0, 255, 255])),
             &[],
         );
-        assert_eq!(*image.get_pixel(2, 2), Rgba([0x0e, 0x11, 0x14, 255]));
+        let Rgba([red, green, blue, _]) = *image.get_pixel(2, 2);
+        assert!((60..160).contains(&red) && (60..160).contains(&blue));
+        assert!(green < 30);
 
         let missing = renderer.render_svg(&config, &Snapshot::default()).unwrap();
-        assert_eq!(missing.matches(">--<").count(), 2);
+        // 两个读数各出现两次：正文和它的投影。
+        assert_eq!(missing.matches(">--<").count(), 4);
     }
 
     #[test]

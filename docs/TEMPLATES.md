@@ -79,7 +79,7 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 
 显示温度时使用 `temperature` 并配合 `temperature_unit`；颜色阈值等判断继续使用始终为摄氏度的 `temperature_c`。
 
-托盘“显示”菜单选择“简洁”时，程序改用内置的 `simple.svg.jinja`（只有 CPU 温度和占用率），不读取配置里的 `template`，也不绘制背景和音频频谱。
+托盘“显示”菜单选择“简洁”时，程序改用内置的 `simple.svg.jinja`（只有 CPU 温度和占用率），不读取配置里的 `template`，也不绘制音频频谱；配置的背景图 / GIF 会铺满整个画面并被压暗，可用托盘菜单“简洁布局显示背景”关闭。
 
 ## 常用语法
 

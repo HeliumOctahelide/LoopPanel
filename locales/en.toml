@@ -25,6 +25,7 @@ display_simple = "Simple"
 unit = "Unit"
 unit_celsius = "Celsius"
 unit_fahrenheit = "Fahrenheit"
+simple_background = "Background in simple layout"
 
 [tray.install]
 cancelled = "CPU temperature support installation was cancelled; LoopPanel did not start"

@@ -25,6 +25,7 @@ display_simple = "단순"
 unit = "단위"
 unit_celsius = "섭씨"
 unit_fahrenheit = "화씨"
+simple_background = "단순 화면에 배경 표시"
 
 [tray.install]
 cancelled = "CPU 온도 지원 설치가 취소되어 LoopPanel을 시작하지 않았습니다"

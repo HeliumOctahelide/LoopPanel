@@ -2,7 +2,7 @@
 
 use std::{
     mem::size_of,
-    sync::atomic::{AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
 use anyhow::{Result, ensure};
@@ -19,6 +19,9 @@ use crate::{
 const SETTINGS_KEY: &str = r"Software\LoopPanel";
 const LAYOUT_VALUE: &str = "Layout";
 const TEMPERATURE_UNIT_VALUE: &str = "TemperatureUnit";
+const SIMPLE_BACKGROUND_VALUE: &str = "SimpleBackground";
+const ON: &str = "on";
+const OFF: &str = "off";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Layout {
@@ -110,6 +113,7 @@ impl TemperatureUnit {
 pub struct DisplaySettings {
     layout: AtomicU8,
     temperature_unit: AtomicU8,
+    simple_background: AtomicBool,
 }
 
 impl DisplaySettings {
@@ -121,14 +125,29 @@ impl DisplaySettings {
             .map_or(TemperatureUnit::Celsius, |name| {
                 TemperatureUnit::from_name(&name)
             });
-        Self::new(layout, temperature_unit)
+        // 单纯布局默认把配置的背景铺在下面。
+        let simple_background =
+            load_value(SIMPLE_BACKGROUND_VALUE).is_none_or(|value| value != OFF);
+        Self::new(layout, temperature_unit, simple_background)
     }
 
-    pub fn new(layout: Layout, temperature_unit: TemperatureUnit) -> Self {
+    pub fn new(layout: Layout, temperature_unit: TemperatureUnit, simple_background: bool) -> Self {
         Self {
             layout: AtomicU8::new(layout as u8),
             temperature_unit: AtomicU8::new(temperature_unit as u8),
+            simple_background: AtomicBool::new(simple_background),
         }
+    }
+
+    /// 单纯布局下是否显示配置的背景图 / GIF。
+    pub fn simple_background(&self) -> bool {
+        self.simple_background.load(Ordering::Relaxed)
+    }
+
+    pub fn set_simple_background(&self, enabled: bool) -> Result<()> {
+        save_value(SIMPLE_BACKGROUND_VALUE, if enabled { ON } else { OFF })?;
+        self.simple_background.store(enabled, Ordering::Relaxed);
+        Ok(())
     }
 
     pub fn layout(&self) -> Layout {
@@ -204,7 +223,8 @@ mod tests {
             TemperatureUnit::Celsius
         );
 
-        let settings = DisplaySettings::new(Layout::Simple, TemperatureUnit::Fahrenheit);
+        let settings = DisplaySettings::new(Layout::Simple, TemperatureUnit::Fahrenheit, false);
+        assert!(!settings.simple_background());
         assert_eq!(settings.layout(), Layout::Simple);
         assert_eq!(settings.temperature_unit(), TemperatureUnit::Fahrenheit);
     }

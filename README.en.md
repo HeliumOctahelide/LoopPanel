@@ -93,6 +93,7 @@ While running, right-click the tray icon to:
 - view the display and CPU temperature status;
 - open `looppanel.toml`;
 - switch between the default and simple layouts under "Display", and between Celsius and Fahrenheit under "Unit"; the choice applies immediately and is remembered;
+- turn the full-screen background image / GIF of the simple layout on or off with "Background in simple layout" (the background is dimmed, and the digits have an outline and a shadow);
 - enable or disable "start at login";
 - retry after a connection failure;
 - exit and release the USB interface.

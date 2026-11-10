@@ -67,6 +67,7 @@ const ID_LAYOUT_DEFAULT: u32 = 1006;
 const ID_LAYOUT_SIMPLE: u32 = 1007;
 const ID_UNIT_CELSIUS: u32 = 1008;
 const ID_UNIT_FAHRENHEIT: u32 = 1009;
+const ID_SIMPLE_BACKGROUND: u32 = 1010;
 
 pub fn run() -> Result<()> {
     let _display_lock = DisplayLock::acquire()?;
@@ -397,6 +398,13 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             ),
         ],
     )?;
+    let simple_background = settings.simple_background();
+    append_menu(
+        menu.0,
+        MF_STRING | if simple_background { MF_CHECKED } else { 0 },
+        ID_SIMPLE_BACKGROUND as usize,
+        &tr("tray.menu.simple_background"),
+    )?;
     let startup_enabled = startup::is_enabled(&executable)?;
     append_menu(
         menu.0,
@@ -438,8 +446,10 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             }
         }
         ID_INSTALL_TEMPERATURE => install_temperature_service(&executable)?,
-        ID_LAYOUT_DEFAULT | ID_LAYOUT_SIMPLE | ID_UNIT_CELSIUS | ID_UNIT_FAHRENHEIT => {
+        ID_LAYOUT_DEFAULT | ID_LAYOUT_SIMPLE | ID_UNIT_CELSIUS | ID_UNIT_FAHRENHEIT
+        | ID_SIMPLE_BACKGROUND => {
             match command {
+                ID_SIMPLE_BACKGROUND => settings.set_simple_background(!simple_background)?,
                 ID_LAYOUT_DEFAULT => settings.set_layout(Layout::Default)?,
                 ID_LAYOUT_SIMPLE => settings.set_layout(Layout::Simple)?,
                 ID_UNIT_CELSIUS => settings.set_temperature_unit(TemperatureUnit::Celsius)?,
