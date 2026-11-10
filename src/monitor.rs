@@ -7,6 +7,7 @@ use crate::{
     io_metrics::IoMetrics,
     temperature,
     win::{system_dll, wide},
+    windows_gpu::WindowsGpu,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -584,10 +585,11 @@ pub(crate) struct GpuSample {
     pub(crate) fan_percent: Option<u32>,
 }
 
-/// 两家厂商的驱动接口完全不同；NVML 可用时保持原有行为，否则尝试 AMD ADL。
+/// 厂商接口数据最全，优先使用：NVML，其次 AMD ADL；都没有时（例如 Intel 显卡）退回 Windows 通用接口。
 enum Gpu {
     Nvidia(Nvml),
     Amd(Adl),
+    Windows(WindowsGpu),
 }
 
 impl Gpu {
@@ -595,12 +597,14 @@ impl Gpu {
         Nvml::load()
             .map(Self::Nvidia)
             .or_else(|| Adl::load().map(Self::Amd))
+            .or_else(|| WindowsGpu::load().map(Self::Windows))
     }
 
     fn sample(&self) -> GpuSample {
         match self {
             Self::Nvidia(nvml) => nvml.sample(),
             Self::Amd(adl) => adl.sample(),
+            Self::Windows(gpu) => gpu.sample(),
         }
     }
 }

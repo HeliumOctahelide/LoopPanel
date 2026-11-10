@@ -14,3 +14,4 @@ pub mod temperature_service;
 pub mod transport;
 pub mod tray;
 pub mod win;
+mod windows_gpu;
