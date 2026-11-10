@@ -5,7 +5,7 @@
 
 LoopPanel 是一个面向 Windows 的轻量原生 USB 屏显程序。它把本地图片、GIF 或内置动效与可编辑的 MiniJinja + SVG 模板组合，采集本机硬件信息和播放音频频谱，再把完整画面直接发送给受支持的屏幕。
 
-当前版本只验证了一种设备配置：JONSBO TM-360 上的 480×480 MacroSilicon MS9132 屏幕。项目名称是通用的，传输层目前不是“所有 JONSBO 屏幕通用驱动”。详见[兼容性](#兼容性)与[设备迁移指南](docs/DEVICE_PORTING.md)。
+当前版本只验证了一种设备配置：JONSBO TM-360 与 TM-280 共用的 480×480 MacroSilicon MS9132 屏幕；两款产品仅冷排规格不同，均已实机验证。项目名称是通用的，传输层目前不是“所有 JONSBO 屏幕通用驱动”。详见[兼容性](#兼容性)与[设备迁移指南](docs/DEVICE_PORTING.md)。
 
 ![默认模板预览](assets/looppanel-preview.png)
 
@@ -38,7 +38,7 @@ LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO、NVIDIA �
 
 | 项目 | 当前配置 |
 |---|---|
-| 实测产品 | JONSBO TM-360；TM-280（同一屏幕模组，仅冷排规格不同） |
+| 实测产品 | JONSBO TM-360；TM-280（同一屏幕模组，仅冷排规格不同；已在 Ryzen 7 7800X3D + Radeon RX 9070 XT 平台实机验证） |
 | USB VID/PID | `345F:9132` |
 | 控制器族 | MacroSilicon MS9132 |
 | 分辨率 | 480×480 |
