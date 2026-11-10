@@ -133,7 +133,7 @@ fn install() -> Result<()> {
         }
     };
 
-    println!("CPU 温度服务已安装并启动；当前 CPU Package {service_temperature}°C。");
+    println!("CPU 温度服务已安装并启动；当前 CPU 温度 {service_temperature}°C。");
     Ok(())
 }
 

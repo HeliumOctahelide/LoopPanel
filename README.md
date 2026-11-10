@@ -1,4 +1,5 @@
 # LoopPanel
+[简体中文](README.md) | [English](README.en.md) | [한국어](README.ko.md)
 
 ![LoopPanel 图标](assets/looppanel-icon-256.png)
 
@@ -8,7 +9,7 @@ LoopPanel 是一个面向 Windows 的轻量原生 USB 屏显程序。它把本�
 
 ![默认模板预览](assets/looppanel-preview.png)
 
-LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO 或 NVIDIA 没有隶属或官方授权关系。
+LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO、NVIDIA 或 AMD 没有隶属或官方授权关系。
 
 ## 项目来源
 
@@ -16,7 +17,7 @@ LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO 或 NVIDIA 
 
 显示协议以 [Fakinvisibility/b360gt-driver](https://github.com/Fakinvisibility/b360gt-driver/tree/94ae7f2a710123b582ca3fa806d85ee1c684e287) 的 B360GT Windows USBPcap 实机捕获为主要依据；启动时序、UYVY422 编码和帧分块已在本机 TM-360 上实际通过。DS339 的后续实机修正也用于排除早期错误的 BGR888 结论：[UYVY 修正](https://github.com/emaspa/InfoPanel-linux/commit/21fe373f8de962491169d0d611fb297321df60ec)、[初始化节拍修正](https://github.com/emaspa/InfoPanel-linux/commit/94415ac46260cf5f1b0d4e670b9a48e4ad38105b)。
 
-仓库采用 MIT License。第三方组件和 PawnIO IntelMSR 模块的许可见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 与 [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt)。
+仓库采用 MIT License。第三方组件和 PawnIO IntelMSR、AMDFamily17 模块的许可见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 与 [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt)。
 
 ## 主要能力
 
@@ -25,7 +26,7 @@ LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO 或 NVIDIA 
 - 托盘内启用登录时自动启动、打开配置、查看状态和安全退出；
 - 三张原创 16:9 样例背景、PNG、JPEG、GIF 和无素材时的内置动效；
 - 480×270 的 16:9 中央图片区，以及可自由编辑的 480×480 SVG 仪表层；
-- CPU、RAM、NVIDIA GPU、显存、网络和磁盘信息；
+- CPU、RAM、NVIDIA 或 AMD Radeon GPU、显存、网络和磁盘信息；
 - WASAPI 回环采集、1024 点 FFT、16 段实时音频频谱；
 - 单实例屏幕锁和官方软件冲突检查。
 
@@ -37,7 +38,7 @@ LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO 或 NVIDIA 
 
 | 项目 | 当前配置 |
 |---|---|
-| 实测产品 | JONSBO TM-360 |
+| 实测产品 | JONSBO TM-360；TM-280（同一屏幕模组，仅冷排规格不同） |
 | USB VID/PID | `345F:9132` |
 | 控制器族 | MacroSilicon MS9132 |
 | 分辨率 | 480×480 |
@@ -48,6 +49,17 @@ LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO 或 NVIDIA 
 | 分块 | `7 × 65,536 + 2,064`，帧后无 ZLP |
 | Windows 驱动 | `HidUsb` + `libusb0`，通常显示为 `MS USB Display` |
 
+传感器采集与屏幕传输层相互独立，按本机硬件自动选择：
+
+| 硬件 | 数据来源 | 说明 |
+|---|---|---|
+| Intel CPU | PawnIO `IntelMSR` | Package 温度 |
+| AMD CPU，Family 17h–1Ah（Zen 至 Zen 5） | PawnIO `AMDFamily17` | SMN 报告温度 Tctl；个别 Zen/Zen+ 型号按 Linux k10temp 的偏移表换算为 Tdie |
+| NVIDIA GPU | 驱动自带 NVML | 优先使用 |
+| AMD Radeon GPU | 驱动自带 ADL（`atiadlxx.dll`） | NVML 不可用时使用；需要驱动支持 `ADL2_New_QueryPMLogData_Get`；多个 AMD 适配器并存时取专用显存最大的一个 |
+
+其他 CPU（包括更早的 AMD 家族）没有温度支持，温度服务安装自检会失败并给出明确错误。
+
 仅有相同品牌、控制器或 `345F:9132` VID/PID 不足以判定兼容。同一控制器族已经发现不同分辨率、帧头高位、ZLP、触发和初始化策略。当前代码不会把其他 JONSBO 带屏水冷或其他 MS9132 OEM 屏幕误标为已支持设备。
 
 ## 使用方法
@@ -57,7 +69,7 @@ LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO 或 NVIDIA 
 1. Windows 10/11 x64；
 2. TM-360 原有的签名 `MS USB Display` / `libusb0` 驱动；
 3. 已安装 PawnIO 2.x；其驱动和 `PawnIOLib.dll` 不随本项目分发；
-4. 从系统托盘彻底退出 `JONSBO-AIO.exe`。
+4. 彻底退出正在驱动这块屏幕的厂商软件：`JONSBO-AIO.exe` 或 `LcdFusion.exe`（LCD Fusion）。
 
 ### 启动
 
@@ -75,7 +87,7 @@ LoopPanel.exe
 
 运行后右击托盘图标可以：
 
-- 查看屏幕和 CPU Package 温度状态；
+- 查看屏幕和 CPU 温度状态；
 - 打开 `looppanel.toml`；
 - 启用或关闭“登录时自动启动”；
 - 在连接失败后重试；
@@ -137,10 +149,10 @@ show_sensors = true
 - MiniJinja 2.21 + resvg/usvg/tiny-skia；
 - `image` 解码 PNG、JPEG 与 GIF；
 - PDH Processor Utility、Windows CPU Set、NT per-core busy times、PowrProf、GlobalMemoryStatusEx；
-- NVIDIA 驱动自带 NVML；
+- NVIDIA 驱动自带 NVML，或 AMD 驱动自带 ADL；
 - IP Helper API、PDH；
 - WASAPI loopback + 自包含 radix-2 FFT；
-- PawnIO 2.x + 官方 IntelMSR 模块，用于 CPU Package 温度。
+- PawnIO 2.x + 官方 IntelMSR 模块（Intel Package 温度）或 AMDFamily17 模块（AMD Tctl/Tdie 温度）。
 
 详细数据流和模块分工见[架构说明](docs/ARCHITECTURE.md)。
 
@@ -167,10 +179,10 @@ cargo build --release --bins --locked
 ## 安全边界
 
 - 双击主程序可能访问受支持的 USB 屏幕；测试或审阅代码时不要把启动程序当作只读检查；
-- 发现 JONSBO-AIO 正在运行或已有另一个 LoopPanel 实例时拒绝写屏；
-- HID、SetupAPI、`libusb0.dll` 与 `nvml.dll` 只从 Windows 系统目录加载；
+- 发现 JONSBO-AIO 或 LCD Fusion 正在运行，或已有另一个 LoopPanel 实例时拒绝写屏；
+- HID、SetupAPI、`libusb0.dll`、`nvml.dll` 与 `atiadlxx.dll` 只从 Windows 系统目录加载；
 - 显示路径没有固件、EEPROM、USB 描述符或未知命令写入功能；
-- CPU 温度服务只接受固定采样请求，不接受任意 MSR 地址或写操作；
+- CPU 温度服务只接受固定采样请求，不接受任意 MSR/SMN 地址或写操作；AMD 路径由官方模块向 SMN 索引寄存器写入固定的温度寄存器地址再读出数据，期间持有 `Global\Access_PCI` 互斥量；
 - 当前二进制尚未做 Authenticode 签名，公开发布前应完成代码签名和 Windows 版本资源。
 
 ## 为其他屏幕增加支持

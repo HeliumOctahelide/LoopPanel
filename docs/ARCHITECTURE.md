@@ -28,19 +28,20 @@ Windows/NVML ── MiniJinja ── SVG ── resvg ── 缓存 RGBA 仪表�
 | `media.rs` | PNG/JPEG/GIF、内置动效与中央 16:9 背景 |
 | `render.rs` | MiniJinja 上下文、SVG 栅格化、Alpha 合成和频谱绘制 |
 | `audio.rs` | WASAPI 回环、混音格式解码、FFT、16 段和平滑 |
-| `monitor.rs` | CPU 拓扑/负载/频率、内存、NVML 与 I/O 快照 |
+| `monitor.rs` | CPU 拓扑/负载/频率、内存、GPU 后端选择（NVML 优先，其次 ADL）与 I/O 快照 |
+| `adl.rs` | AMD Radeon 传感器：ADL 适配器选择与性能日志解码 |
 | `io_metrics.rs` | IP Helper 网络计数与 PDH 磁盘速率 |
-| `temperature*.rs` | PawnIO Intel Package 温度客户端和最小服务 |
+| `temperature*.rs` | PawnIO CPU 温度（Intel Package、AMD Tctl/Tdie）客户端和最小服务 |
 | `protocol.rs` | 480×480 RGBA → UYVY422 与帧封装 |
 | `transport.rs` | TM-360 枚举、HID 初始化、bulk 分块与帧发送 |
 | `display.rs` | 传感器、仪表、频谱、动画和保活调度 |
 | `tray.rs` | 单一 GUI 入口、首次 UAC 温度服务安装、Win32 托盘、工作线程和显式退出 |
 | `startup.rs` | HKCU 登录启动 |
-| `process.rs` | JONSBO-AIO 冲突检查和全局显示锁 |
+| `process.rs` | 厂商软件（JONSBO-AIO、LCD Fusion）冲突检查和全局显示锁 |
 
 ## 权限边界
 
-托盘、模板、媒体、监控和 USB 显示进程都以普通用户运行。Windows 不提供适用于当前 Intel CPU 的普通用户 Package 温度接口，因此温度功能单独使用一个 LocalSystem 服务。首次双击主程序且服务缺失时，主程序通过 `ShellExecuteExW` 请求 UAC、等待安装完成并验证普通用户管道读取；后续启动不再提权。服务只暴露固定的一字节采样请求和温度响应，不允许客户端指定 MSR 或执行写操作。
+托盘、模板、媒体、监控和 USB 显示进程都以普通用户运行。Windows 不提供普通用户可用的 Intel Package 或 AMD Tctl 温度接口，因此温度功能单独使用一个 LocalSystem 服务。首次双击主程序且服务缺失时，主程序通过 `ShellExecuteExW` 请求 UAC、等待安装完成并验证普通用户管道读取；后续启动不再提权。服务只暴露固定的一字节采样请求和温度响应，不允许客户端指定 MSR/SMN 地址或执行写操作。服务启动时按 CPUID 厂商与家族选择 IntelMSR 或 AMDFamily17 模块；AMD 的 SMN 读取是“写索引、读数据”两步，因此每次采样都在 `Global\Access_PCI` 互斥量内完成，以便与其他硬件监控软件串行。
 
 ## 调度
 
@@ -54,4 +55,4 @@ Windows/NVML ── MiniJinja ── SVG ── resvg ── 缓存 RGBA 仪表�
 
 ## 动态库
 
-程序动态加载 Windows 系统目录中的 `hid.dll`、`setupapi.dll`、`libusb0.dll`、`nvml.dll`、`iphlpapi.dll` 和 `pdh.dll`。缺少 NVML 或部分监控能力只会使相应模板字段成为 `none`；缺少显示所需的 HID/libusb0 则写屏失败并返回明确错误。
+程序动态加载 Windows 系统目录中的 `hid.dll`、`setupapi.dll`、`libusb0.dll`、`nvml.dll`、`atiadlxx.dll`、`iphlpapi.dll` 和 `pdh.dll`。缺少 NVML 与 ADL 或部分监控能力只会使相应模板字段成为 `none`；缺少显示所需的 HID/libusb0 则写屏失败并返回明确错误。

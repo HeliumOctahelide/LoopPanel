@@ -52,13 +52,14 @@ unsafe extern "system" {
     fn CloseHandle(handle: Handle) -> i32;
 }
 
-pub fn official_app_running() -> Result<bool> {
-    process_running("JONSBO-AIO.exe")
-}
+/// 会占用同一块屏幕视频接口的厂商软件；它们运行时 claim 会失败，且不应与其同时写屏。
+const OFFICIAL_APPS: [&str; 2] = ["JONSBO-AIO.exe", "LcdFusion.exe"];
 
 pub fn ensure_official_app_stopped() -> Result<()> {
-    if official_app_running()? {
-        bail!("JONSBO-AIO 仍在运行。请先从系统托盘彻底退出它，再启动 LoopPanel");
+    for app in OFFICIAL_APPS {
+        if process_running(app)? {
+            bail!("{app} 仍在运行。请先彻底退出它，再启动 LoopPanel");
+        }
     }
     Ok(())
 }

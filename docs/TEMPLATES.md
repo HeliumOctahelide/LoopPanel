@@ -29,7 +29,7 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 | 表达式 | 类型 |
 |---|---|
 | `cpu.load_percent` | float，0–100 或 `none`；Windows Processor Utility，总体口径与任务管理器一致 |
-| `cpu.temperature_c` | integer 或 `none` |
+| `cpu.temperature_c` | integer 或 `none`；Intel 为 Package 温度，AMD 为 Tctl/Tdie |
 | `cpu.performance_frequency_ghz` | float 或 `none` |
 | `cpu.efficiency_frequency_ghz` | float 或 `none` |
 | `cpu.performance_cores` | list of `{ opacity }`，最多 8 项 |
@@ -46,9 +46,9 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 | `memory.used_percent` | float，0–100 |
 | `memory.bar_width` | float，0–230 |
 
-### NVIDIA GPU
+### GPU
 
-GPU 和 NVML 不可用时，多数字段为 `none`。
+程序先尝试 NVIDIA NVML，不可用时再尝试 AMD ADL；两者都不可用时，所有字段为 `none`。AMD 下 `gpu.power_limit_w` 与 `gpu.performance_state` 始终为 `none`，`gpu.power_w` 取整卡功耗（驱动不提供时退回芯片功耗），`gpu.temperature_c` 取边缘温度（不提供时退回热点温度）。
 
 | 表达式 | 类型 |
 |---|---|

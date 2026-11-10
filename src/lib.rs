@@ -1,3 +1,4 @@
+mod adl;
 pub mod audio;
 pub mod config;
 pub mod display;

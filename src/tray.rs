@@ -294,9 +294,9 @@ fn show_menu(state: *mut AppState, window: HWND, notification_point: Option<POIN
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &status)?;
     let temperature_installed = temperature_service::is_installed();
     let temperature = match temperature::service_sample() {
-        Ok(value) => format!("CPU Package：{value}°C"),
-        Err(_) if temperature_installed => "CPU Package：服务暂时不可用".to_owned(),
-        Err(_) => "CPU Package：尚未安装温度支持".to_owned(),
+        Ok(value) => format!("CPU 温度：{value}°C"),
+        Err(_) if temperature_installed => "CPU 温度：服务暂时不可用".to_owned(),
+        Err(_) => "CPU 温度：尚未安装温度支持".to_owned(),
     };
     append_menu(menu.0, MF_STRING | MF_GRAYED, 0, &temperature)?;
     append_menu(menu.0, MF_SEPARATOR, 0, "")?;

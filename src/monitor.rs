@@ -3,6 +3,7 @@ use std::{ffi::c_void, mem::size_of, ptr, thread, time::Duration};
 use libloading::Library;
 
 use crate::{
+    adl::Adl,
     io_metrics::IoMetrics,
     temperature,
     win::{system_dll, wide},
@@ -39,7 +40,7 @@ pub struct Monitor {
     cpu_count: usize,
     previous_times: Option<Vec<ProcessorTimes>>,
     power: Option<PowerApi>,
-    nvml: Option<Nvml>,
+    gpu: Option<Gpu>,
     io: IoMetrics,
     cpu_utility: Option<CpuUtility>,
 }
@@ -57,7 +58,7 @@ impl Monitor {
             cpu_count,
             previous_times: processor_times(cpu_count),
             power: PowerApi::load(),
-            nvml: Nvml::load(),
+            gpu: Gpu::load(),
             io: IoMetrics::new(),
             cpu_utility: CpuUtility::load(),
         }
@@ -83,7 +84,7 @@ impl Monitor {
             .unwrap_or_default();
 
         let memory = memory_usage().unwrap_or_default();
-        let gpu = self.nvml.as_ref().map(Nvml::sample).unwrap_or_default();
+        let gpu = self.gpu.as_ref().map(Gpu::sample).unwrap_or_default();
         let io = self.io.sample();
 
         Snapshot {
@@ -570,17 +571,38 @@ struct NvmlMemory {
 }
 
 #[derive(Default)]
-struct GpuSample {
-    percent: Option<u32>,
-    temperature: Option<u32>,
-    power_w: Option<f32>,
-    power_limit_w: Option<f32>,
-    memory_used_bytes: Option<u64>,
-    memory_total_bytes: Option<u64>,
-    graphics_clock_mhz: Option<u32>,
-    memory_clock_mhz: Option<u32>,
-    performance_state: Option<u32>,
-    fan_percent: Option<u32>,
+pub(crate) struct GpuSample {
+    pub(crate) percent: Option<u32>,
+    pub(crate) temperature: Option<u32>,
+    pub(crate) power_w: Option<f32>,
+    pub(crate) power_limit_w: Option<f32>,
+    pub(crate) memory_used_bytes: Option<u64>,
+    pub(crate) memory_total_bytes: Option<u64>,
+    pub(crate) graphics_clock_mhz: Option<u32>,
+    pub(crate) memory_clock_mhz: Option<u32>,
+    pub(crate) performance_state: Option<u32>,
+    pub(crate) fan_percent: Option<u32>,
+}
+
+/// 两家厂商的驱动接口完全不同；NVML 可用时保持原有行为，否则尝试 AMD ADL。
+enum Gpu {
+    Nvidia(Nvml),
+    Amd(Adl),
+}
+
+impl Gpu {
+    fn load() -> Option<Self> {
+        Nvml::load()
+            .map(Self::Nvidia)
+            .or_else(|| Adl::load().map(Self::Amd))
+    }
+
+    fn sample(&self) -> GpuSample {
+        match self {
+            Self::Nvidia(nvml) => nvml.sample(),
+            Self::Amd(adl) => adl.sample(),
+        }
+    }
 }
 
 struct Nvml {
