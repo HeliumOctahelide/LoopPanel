@@ -78,6 +78,7 @@ system_directory_failed = "Cannot get the Windows system directory"
 registry_read_failed = "Cannot read registry string (Win32 error {code})"
 
 [config]
+write_failed = "Cannot write configuration file: {path}"
 not_found = "Configuration file not found: {path}"
 read_failed = "Cannot read configuration file: {path}"
 format_invalid = "Invalid configuration file format: {path}"
@@ -242,3 +243,10 @@ template_render_failed = "Cannot render SVG template"
 
 [settings]
 save_failed = "Cannot save the display setting: {error}"
+
+[config.comment]
+background = "Three original samples are bundled; you can also use your own PNG, JPEG or GIF."
+paths = "Background, template and relative font paths are resolved against this file's directory."
+font = "Uses Bahnschrift, which ships with Windows 10/11, by default; any other local TTF/TTC font works too."
+fps = "GIFs keep their own frame timing; fps is the animation cap, from 1 to 30."
+sensor_interval = "Hardware sampling period; the default is 1 Hz."

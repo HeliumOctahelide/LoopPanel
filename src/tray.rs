@@ -42,7 +42,7 @@ use windows_sys::Win32::{
 };
 
 use crate::{
-    display,
+    config, display,
     i18n::{t, tr, tr_with},
     process::DisplayLock,
     settings::{DisplaySettings, Layout, TemperatureUnit},
@@ -77,6 +77,8 @@ pub fn run() -> Result<()> {
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("looppanel.toml");
+    // 随包配置的注释跟随显示语言；文件不存在或不可写时保持原样，不影响启动。
+    let _ = config::localize_comments(&config_file);
     let taskbar_created = unsafe { RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()) };
     ensure!(
         taskbar_created != 0,

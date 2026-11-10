@@ -91,6 +91,25 @@ macro_rules! t {
 }
 pub(crate) use t;
 
+/// 标记一个只按变量传递的消息键，让“源码与目录一致”的测试能看到它。
+pub(crate) const fn message_key(key: &'static str) -> &'static str {
+    key
+}
+
+/// 如果 `text` 是 `keys` 中某个键在任意语言里的文字，返回它在当前语言里的文字。
+pub(crate) fn retranslate(keys: &[&str], text: &str) -> Option<String> {
+    static CATALOGS: OnceLock<Vec<Messages>> = OnceLock::new();
+    let catalogs =
+        CATALOGS.get_or_init(|| LOCALES.iter().map(|locale| messages(locale.tag)).collect());
+    keys.iter()
+        .find(|key| {
+            catalogs
+                .iter()
+                .any(|messages| messages.get(**key).is_some_and(|message| message == text))
+        })
+        .map(|key| tr(key))
+}
+
 fn locale_tag(language_id: u16) -> &'static str {
     let primary_language = language_id & 0x3ff;
     LOCALES
@@ -194,7 +213,7 @@ mod tests {
                 continue;
             }
             let source = std::fs::read_to_string(&path).unwrap();
-            for marker in ["t!(", "tr(", "tr_with("] {
+            for marker in ["t!(", "tr(", "tr_with(", "message_key("] {
                 for part in source.split(marker).skip(1) {
                     if let Some(key) = part
                         .trim_start()

@@ -6,7 +6,64 @@ use std::{
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use crate::i18n::t;
+use crate::i18n::{message_key, retranslate, t, tr};
+
+/// 随包配置文件里各条注释对应的消息键。
+const COMMENT_KEYS: [&str; 5] = [
+    message_key("config.comment.background"),
+    message_key("config.comment.paths"),
+    message_key("config.comment.font"),
+    message_key("config.comment.fps"),
+    message_key("config.comment.sensor_interval"),
+];
+/// 旧版本随包配置里、现已改写的注释。
+const LEGACY_COMMENTS: [(&str, &str); 1] = [(
+    "默认模板按 Agency FB 调整；也可换成其他本地 TTF/TTC 字体。",
+    "config.comment.font",
+)];
+
+/// 把配置文件里随包自带的注释换成当前 Windows 显示语言。
+///
+/// 只改与已知注释完全相同的行；用户自己写的注释、所有配置值和换行方式都保持原样。
+/// 文件有改动时返回 `true`。
+pub fn localize_comments(path: &Path) -> Result<bool> {
+    let text = fs::read_to_string(path)
+        .with_context(|| t!("config.read_failed", path = path.display()))?;
+    let Some(localized) = localized_comments(&text, |comment| {
+        LEGACY_COMMENTS
+            .iter()
+            .find(|(legacy, _)| *legacy == comment)
+            .map(|(_, key)| tr(key))
+            .or_else(|| retranslate(&COMMENT_KEYS, comment))
+    }) else {
+        return Ok(false);
+    };
+    fs::write(path, localized).with_context(|| t!("config.write_failed", path = path.display()))?;
+    Ok(true)
+}
+
+fn localized_comments(text: &str, translate: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let mut changed = false;
+    let mut output = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\r', '\n']);
+        let ending = &line[body.len()..];
+        let content = body.trim_start();
+        let indent = &body[..body.len() - content.len()];
+        let comment = content.strip_prefix('#').map(str::trim);
+        match comment.and_then(|comment| translate(comment).filter(|new| new != comment)) {
+            Some(translated) => {
+                changed = true;
+                output.push_str(indent);
+                output.push_str("# ");
+                output.push_str(&translated);
+                output.push_str(ending);
+            }
+            None => output.push_str(line),
+        }
+    }
+    changed.then_some(output)
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
@@ -98,6 +155,45 @@ mod tests {
     use std::{fs, process};
 
     use super::Config;
+
+    #[test]
+    fn localizes_only_known_comments_and_keeps_everything_else() {
+        let translate = |comment: &str| match comment {
+            "已知注释" | "旧注释" => Some("Known comment".to_owned()),
+            "Known comment" => Some("Known comment".to_owned()),
+            _ => None,
+        };
+        let text =
+            "# 已知注释\r\nfont = 'a#b.ttf'  # 已知注释\r\n  #旧注释\n# 我自己的备注\nfps = 5";
+        assert_eq!(
+            super::localized_comments(text, translate).unwrap(),
+            "# Known comment\r\nfont = 'a#b.ttf'  # 已知注释\r\n  # Known comment\n# 我自己的备注\nfps = 5"
+        );
+        // 已经是目标语言时不重写文件。
+        assert_eq!(
+            super::localized_comments("# Known comment\nfps = 5\n", translate),
+            None
+        );
+    }
+
+    #[test]
+    fn bundled_config_comments_are_all_in_the_catalog() {
+        let bundled = include_str!("../looppanel.toml");
+        let comments = bundled
+            .lines()
+            .filter_map(|line| line.strip_prefix("# "))
+            .collect::<Vec<_>>();
+        assert_eq!(comments.len(), super::COMMENT_KEYS.len());
+        for comment in comments {
+            assert!(
+                super::retranslate(&super::COMMENT_KEYS, comment).is_some(),
+                "{comment}"
+            );
+        }
+        for (legacy, key) in super::LEGACY_COMMENTS {
+            assert!(super::COMMENT_KEYS.contains(&key), "{legacy}");
+        }
+    }
 
     #[test]
     fn loads_explicit_config_with_a_bare_filename() {
