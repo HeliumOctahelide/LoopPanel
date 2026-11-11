@@ -11,7 +11,7 @@ use crate::{
     i18n::t,
     monitor::Snapshot,
     protocol::{HEIGHT, WIDTH},
-    settings::TemperatureUnit,
+    settings::{Layout, TemperatureUnit},
 };
 
 const AUDIO_LEFT: i32 = 10;
@@ -24,9 +24,19 @@ const AUDIO_BLOCK_COUNT: usize = 8;
 const AUDIO_INACTIVE: Rgba<u8> = Rgba([231, 224, 238, 255]);
 const AUDIO_ACTIVE: Rgba<u8> = Rgba([138, 88, 191, 255]);
 
-/// 内置的“单纯”布局：只显示 CPU 温度和占用率，字号按 480×480 铺满。
-const SIMPLE_TEMPLATE: &str = include_str!("../simple.svg.jinja");
-const SIMPLE_TEMPLATE_NAME: &str = "simple.svg.jinja";
+/// 内置的大字布局：字号按 480×480 铺满，不读取模板文件。返回（模板名，模板内容）。
+fn builtin_template(layout: Layout) -> Option<(&'static str, &'static str)> {
+    match layout {
+        Layout::Default => None,
+        Layout::Simple => Some(("simple.svg.jinja", include_str!("../simple.svg.jinja"))),
+        Layout::CpuGpu => Some(("cpu_gpu.svg.jinja", include_str!("../cpu_gpu.svg.jinja"))),
+        Layout::Temperatures => Some((
+            "temperatures.svg.jinja",
+            include_str!("../temperatures.svg.jinja"),
+        )),
+        Layout::Clock => Some(("clock.svg.jinja", include_str!("../clock.svg.jinja"))),
+    }
+}
 
 pub struct Renderer {
     environment: Environment<'static>,
@@ -52,14 +62,19 @@ impl Renderer {
         )
     }
 
+    /// 按布局选择模板：默认布局读取 `template_path`，其余使用程序内置的大字模板。
+    pub fn for_layout(layout: Layout, template_path: &Path, font_path: &Path) -> Result<Self> {
+        match builtin_template(layout) {
+            Some((name, template)) => {
+                Self::from_template(template.to_owned(), name, None, font_path)
+            }
+            None => Self::new(template_path, font_path),
+        }
+    }
+
     /// 使用程序内置的单纯布局，不读取模板文件。
     pub fn simple(font_path: &Path) -> Result<Self> {
-        Self::from_template(
-            SIMPLE_TEMPLATE.to_owned(),
-            SIMPLE_TEMPLATE_NAME,
-            None,
-            font_path,
-        )
+        Self::for_layout(Layout::Simple, Path::new(""), font_path)
     }
 
     fn from_template(
@@ -369,7 +384,11 @@ mod tests {
     use super::{
         AUDIO_ACTIVE, AUDIO_INACTIVE, Renderer, bar_width, core_views, draw_audio_spectrum,
     };
-    use crate::{config::Config, monitor::Snapshot, settings::TemperatureUnit};
+    use crate::{
+        config::Config,
+        monitor::Snapshot,
+        settings::{Layout, TemperatureUnit},
+    };
 
     #[test]
     fn renders_default_dashboard_around_a_transparent_image_slot() {
@@ -436,6 +455,56 @@ mod tests {
         let missing = renderer.render_svg(&config, &Snapshot::default()).unwrap();
         // 两个读数各出现两次：正文和它的投影。
         assert_eq!(missing.matches(">--<").count(), 4);
+    }
+
+    #[test]
+    fn large_text_layouts_render_their_readings() {
+        let font = Path::new(r"C:\Windows\Fonts\segoeui.ttf");
+        let config = Config::default();
+        let snapshot = Snapshot {
+            cpu_percent: Some(12.4),
+            cpu_temperature: Some(47),
+            gpu_percent: Some(98),
+            gpu_temperature: Some(72),
+            ..Snapshot::default()
+        };
+        let render = |layout, unit, snapshot: &Snapshot| {
+            let mut renderer = Renderer::for_layout(layout, Path::new(""), font).unwrap();
+            assert!(!renderer.audio_enabled());
+            renderer.set_temperature_unit(unit);
+            // 生成的 SVG 必须能被解析和光栅化，缺少读数时也一样。
+            renderer.update(&config, snapshot).unwrap();
+            renderer.render_svg(&config, snapshot).unwrap()
+        };
+        let celsius = TemperatureUnit::Celsius;
+
+        let cpu_gpu = render(Layout::CpuGpu, celsius, &snapshot);
+        for reading in [">47°C<", ">12%<", ">72°C<", ">98%<"] {
+            assert_eq!(cpu_gpu.matches(reading).count(), 2, "{reading}");
+        }
+        assert!(cpu_gpu.contains("font-size=\"128\""));
+        // 三位数的温度缩小字号，给右侧的占用率留出位置。
+        let fahrenheit = render(Layout::CpuGpu, TemperatureUnit::Fahrenheit, &snapshot);
+        assert!(fahrenheit.contains(">117°F<") && fahrenheit.contains(">162°F<"));
+        assert!(!fahrenheit.contains("font-size=\"128\""));
+
+        let temperatures = render(Layout::Temperatures, celsius, &snapshot);
+        assert!(temperatures.contains(">47°C<") && temperatures.contains(">72°C<"));
+        // CPU 47°C 是最低一档，GPU 72°C 是橙色一档。
+        assert!(temperatures.contains("#3ddc97") && temperatures.contains("#ff8c42"));
+        assert!(!temperatures.contains('%'));
+
+        let clock = render(Layout::Clock, celsius, &snapshot);
+        assert!(clock.contains(">47°C<") && clock.contains(">72°C<"));
+        let time = clock.split("font-size=\"176\"").nth(1).unwrap();
+        let time = &time[time.find('>').unwrap() + 1..time.find('<').unwrap()];
+        assert_eq!(time.len(), 5, "{time}");
+        assert_eq!(time.as_bytes()[2], b':');
+
+        for layout in [Layout::CpuGpu, Layout::Temperatures, Layout::Clock] {
+            let missing = render(layout, celsius, &Snapshot::default());
+            assert!(missing.contains(">--<"), "{layout:?}");
+        }
     }
 
     #[test]

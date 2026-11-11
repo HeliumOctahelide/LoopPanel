@@ -19,22 +19,66 @@ use crate::{
 };
 
 fn renderer_for(config: &Config, layout: Layout) -> Result<Renderer> {
-    match layout {
-        Layout::Default => Renderer::new(&config.template, &config.font),
-        Layout::Simple => Renderer::simple(&config.font),
+    Renderer::for_layout(layout, &config.template, &config.font)
+}
+
+/// 自动轮换的状态：托盘里选中的布局是起点，开启轮换后每隔一段时间换到下一个布局。
+struct Rotation {
+    selected: Layout,
+    shown: Layout,
+    interval: Option<Duration>,
+    next: Instant,
+}
+
+impl Rotation {
+    fn new(selected: Layout, interval: Option<Duration>, now: Instant) -> Self {
+        Self {
+            selected,
+            shown: selected,
+            interval,
+            next: now + interval.unwrap_or_default(),
+        }
+    }
+
+    /// 返回现在应该显示的布局。在菜单里另选布局会立刻跳过去并重新计时；
+    /// 改间隔或刚开启时重新计时；关闭轮换后回到选中的布局。
+    fn layout(&mut self, selected: Layout, interval: Option<Duration>, now: Instant) -> Layout {
+        if selected != self.selected {
+            self.selected = selected;
+            self.shown = selected;
+            self.next = now + interval.unwrap_or_default();
+        }
+        if interval != self.interval {
+            self.interval = interval;
+            self.next = now + interval.unwrap_or_default();
+        }
+        match interval {
+            Some(interval) if now >= self.next => {
+                self.shown = self.shown.next();
+                self.next = now + interval;
+            }
+            Some(_) => {}
+            None => self.shown = selected,
+        }
+        self.shown
+    }
+
+    /// 下一次轮换的时刻；未开启时为 `None`。
+    fn deadline(&self) -> Option<Instant> {
+        self.interval.map(|_| self.next)
     }
 }
 
-/// 单纯布局关闭背景时使用的底色，与模板里压暗背景的颜色相同。
+/// 内置大字布局关闭背景时使用的底色，与模板里压暗背景的颜色相同。
 const SIMPLE_PLAIN_BACKGROUND: [u8; 4] = [14, 17, 20, 255];
 
 fn background_for(config: &Config, layout: Layout, simple_background: bool) -> Result<Background> {
     match layout {
         Layout::Default => Background::load(config.background.as_deref(), Placement::CenterBand),
-        Layout::Simple if simple_background => {
+        _ if simple_background => {
             Background::load(config.background.as_deref(), Placement::FullScreen)
         }
-        Layout::Simple => Ok(Background::solid(SIMPLE_PLAIN_BACKGROUND)),
+        _ => Ok(Background::solid(SIMPLE_PLAIN_BACKGROUND)),
     }
 }
 
@@ -46,7 +90,8 @@ pub fn run_until(
     on_reload_failed: impl Fn(&anyhow::Error),
 ) -> Result<()> {
     let (mut config, _) = Config::load(config_path)?;
-    let mut active_layout = settings.layout();
+    let mut rotation = Rotation::new(settings.layout(), settings.rotation(), Instant::now());
+    let mut active_layout = rotation.shown;
     let mut active_unit = settings.temperature_unit();
     let mut renderer = renderer_for(&config, active_layout)?;
     renderer.set_temperature_unit(active_unit);
@@ -97,11 +142,18 @@ pub fn run_until(
         if animated {
             wake_at = wake_at.min(next_content);
         }
-        if config.show_sensors {
+        // 内置大字布局只有读数和时钟，不受默认仪表盘的 show_clock / show_sensors 开关影响。
+        let builtin = active_layout != Layout::Default;
+        let sensors_live = config.show_sensors || builtin;
+        let dashboard_live = config.show_clock || sensors_live;
+        if sensors_live {
             wake_at = wake_at.min(next_sensor);
         }
-        if config.show_clock || config.show_sensors {
+        if dashboard_live {
             wake_at = wake_at.min(next_dashboard);
+        }
+        if let Some(deadline) = rotation.deadline() {
+            wake_at = wake_at.min(deadline);
         }
         if audio_spectrum.is_some() {
             wake_at = wake_at.min(next_audio);
@@ -112,7 +164,8 @@ pub fn run_until(
         }
 
         // 托盘菜单改动显示选项后会唤醒本线程：立即重画，不重新初始化设备。
-        let requested_layout = settings.layout();
+        let requested_layout =
+            rotation.layout(settings.layout(), settings.rotation(), Instant::now());
         let requested_unit = settings.temperature_unit();
         let requested_simple_background = settings.simple_background();
 
@@ -184,11 +237,11 @@ pub fn run_until(
         let repeat_due = now >= next_repeat;
         let content_due = animated && now >= next_content;
         let audio_due = audio_spectrum.is_some() && now >= next_audio;
-        if config.show_sensors && now >= next_sensor {
+        if sensors_live && now >= next_sensor {
             snapshot = monitor.sample();
             next_sensor = now + sensor_interval;
         }
-        let dashboard_changed = (config.show_clock || config.show_sensors) && now >= next_dashboard;
+        let dashboard_changed = dashboard_live && now >= next_dashboard;
         if dashboard_changed {
             while next_dashboard <= now {
                 next_dashboard += dashboard_interval;
@@ -230,4 +283,47 @@ pub fn run_until(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::Rotation;
+    use crate::settings::Layout;
+
+    #[test]
+    fn rotation_cycles_layouts_and_follows_menu_changes() {
+        let start = Instant::now();
+        let at = |seconds: u64| start + Duration::from_secs(seconds);
+        let interval = Some(Duration::from_secs(30));
+
+        // 关闭时始终显示选中的布局，也不需要定时唤醒。
+        let mut rotation = Rotation::new(Layout::Simple, None, start);
+        assert_eq!(rotation.deadline(), None);
+        assert_eq!(
+            rotation.layout(Layout::Simple, None, at(100)),
+            Layout::Simple
+        );
+
+        // 开启后从选中的布局开始，满一个间隔才换下一个。
+        let mut shown =
+            |selected, interval, seconds| rotation.layout(selected, interval, at(seconds));
+        assert_eq!(shown(Layout::Simple, interval, 100), Layout::Simple);
+        assert_eq!(shown(Layout::Simple, interval, 129), Layout::Simple);
+        assert_eq!(shown(Layout::Simple, interval, 130), Layout::CpuGpu);
+        assert_eq!(shown(Layout::Simple, interval, 160), Layout::Temperatures);
+
+        // 在菜单里另选布局：立刻跳过去并重新计时。
+        assert_eq!(shown(Layout::Clock, interval, 170), Layout::Clock);
+        assert_eq!(shown(Layout::Clock, interval, 199), Layout::Clock);
+        assert_eq!(shown(Layout::Clock, interval, 200), Layout::Default);
+
+        // 改间隔重新计时；关闭后回到选中的布局。
+        let shorter = Some(Duration::from_secs(10));
+        assert_eq!(shown(Layout::Clock, shorter, 201), Layout::Default);
+        assert_eq!(shown(Layout::Clock, shorter, 211), Layout::Simple);
+        assert_eq!(shown(Layout::Clock, None, 212), Layout::Clock);
+        assert_eq!(rotation.deadline(), None);
+    }
 }
