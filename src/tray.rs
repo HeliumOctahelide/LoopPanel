@@ -462,8 +462,8 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
     append_menu(menu.0, MF_SEPARATOR, 0, "")?;
     append_menu(menu.0, MF_STRING, ID_EXIT as usize, &tr("tray.menu.exit"))?;
 
-    // 通知消息里附带的锚点是物理像素；本进程未声明 DPI 感知，TrackPopupMenu 用的是缩放后的
-    // 逻辑坐标。在 200% 缩放下直接使用锚点会把菜单推到屏幕右下角，所以统一取光标位置。
+    // 菜单在光标位置弹出。GetCursorPos 与 TrackPopupMenu 总是使用同一种坐标，
+    // 不依赖通知消息里的锚点与本进程 DPI 感知方式是否一致。
     let mut point = POINT::default();
     unsafe { GetCursorPos(&mut point) };
     unsafe { SetForegroundWindow(window) };
