@@ -21,7 +21,7 @@ pub fn rgba_to_uyvy(image: &RgbaImage, brightness: f32) -> Result<Vec<u8>> {
     let source = image.as_raw();
     let mut output = Vec::with_capacity(width as usize * height as usize * 2);
 
-    for pair in source.chunks_exact(8) {
+    for pair in source.as_chunks::<8>().0 {
         let r1 = (pair[0] as i32 * scale) >> 8;
         let g1 = (pair[1] as i32 * scale) >> 8;
         let b1 = (pair[2] as i32 * scale) >> 8;

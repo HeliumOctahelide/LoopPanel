@@ -6,7 +6,7 @@
 
 LoopPanel is a lightweight native USB display program for Windows. It combines a local image, GIF, or built-in animation with an editable MiniJinja + SVG template, collects local hardware information and audio spectrum data, and sends the complete frame directly to a supported display.
 
-The current version has been verified with only one device configuration: the 480×480 MacroSilicon MS9132 display shared by the JONSBO TM-360 and TM-280. The two products differ only in radiator size, and both have been verified on real hardware. The project name is generic, but the transport layer is currently not a universal driver for all JONSBO displays. See [Compatibility](#compatibility) and the [device porting guide](docs/DEVICE_PORTING.md).
+The accepted device configuration is the JONSBO TM-360 with its 480×480 MacroSilicon MS9132 display. A contributor also reports one TM-280 working on a Ryzen 7 7800X3D + Radeon RX 9070 XT system; its identifying fingerprint and full acceptance record are still pending. The project name is generic, but the transport layer is currently not a universal driver for all JONSBO displays. See [Compatibility](#compatibility) and the [device porting guide](docs/DEVICE_PORTING.md).
 
 ![Default template preview](assets/looppanel-preview.png)
 
@@ -41,7 +41,7 @@ The only supported and hardware-verified device configuration is:
 
 | Item | Current configuration |
 |---|---|
-| Tested product | JONSBO TM-360; TM-280 (same display module, only the radiator size differs; verified on a Ryzen 7 7800X3D + Radeon RX 9070 XT system) |
+| Tested product | JONSBO TM-360; an additional contributor report covers one TM-280 unit |
 | USB VID/PID | `345F:9132` |
 | Controller family | MacroSilicon MS9132 |
 | Resolution | 480×480 |

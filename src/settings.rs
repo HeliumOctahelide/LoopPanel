@@ -144,6 +144,7 @@ impl TemperatureUnit {
 /// 托盘线程写、显示线程读的当前选项。
 pub struct DisplaySettings {
     layout: AtomicU8,
+    layout_requested: AtomicBool,
     temperature_unit: AtomicU8,
     simple_background: AtomicBool,
     rotation: AtomicBool,
@@ -180,6 +181,7 @@ impl DisplaySettings {
     pub fn new(layout: Layout, temperature_unit: TemperatureUnit, simple_background: bool) -> Self {
         Self {
             layout: AtomicU8::new(layout as u8),
+            layout_requested: AtomicBool::new(false),
             temperature_unit: AtomicU8::new(temperature_unit as u8),
             simple_background: AtomicBool::new(simple_background),
             rotation: AtomicBool::new(false),
@@ -250,7 +252,13 @@ impl DisplaySettings {
     pub fn set_layout(&self, layout: Layout) -> Result<()> {
         save_value(LAYOUT_VALUE, layout.name())?;
         self.layout.store(layout as u8, Ordering::Relaxed);
+        self.layout_requested.store(true, Ordering::Release);
         Ok(())
+    }
+
+    /// 即使重选同一项，也需要跳回该布局并重新计时。
+    pub fn take_layout_request(&self) -> bool {
+        self.layout_requested.swap(false, Ordering::Acquire)
     }
 
     pub fn set_temperature_unit(&self, unit: TemperatureUnit) -> Result<()> {

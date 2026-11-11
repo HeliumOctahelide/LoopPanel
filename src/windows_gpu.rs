@@ -426,7 +426,7 @@ fn belongs_to(instance: &str, luid_tag: &str) -> bool {
     instance.to_ascii_lowercase().contains(luid_tag)
 }
 
-/// 与任务管理器相同的口径：同一类引擎把各进程的占用相加，再取最忙的一类。
+/// 同一物理引擎汇总各进程占用，再取最忙的引擎；同类型的不同引擎不能相加。
 fn utilization_percent(items: &[(String, f64)], luid_tag: &str) -> Option<u32> {
     let mut by_engine: HashMap<String, f64> = HashMap::new();
     for (instance, value) in items {
@@ -434,9 +434,9 @@ fn utilization_percent(items: &[(String, f64)], luid_tag: &str) -> Option<u32> {
             continue;
         }
         let instance = instance.to_ascii_lowercase();
-        let engine = instance
-            .split_once("engtype_")
-            .map_or("", |(_, engine)| engine);
+        let Some((_, engine)) = instance.split_once("_phys_") else {
+            continue;
+        };
         *by_engine.entry(engine.to_owned()).or_default() += value.max(0.0);
     }
     by_engine
@@ -552,6 +552,29 @@ mod tests {
     }
 
     #[test]
+    fn regression_distinct_engines_of_the_same_type_are_not_added() {
+        let samples = items(&[
+            (
+                "pid_1_luid_0x00000000_0x00014265_phys_0_eng_0_engtype_3D",
+                30.0,
+            ),
+            (
+                "pid_2_luid_0x00000000_0x00014265_phys_0_eng_0_engtype_3D",
+                10.0,
+            ),
+            (
+                "pid_1_luid_0x00000000_0x00014265_phys_0_eng_1_engtype_3D",
+                40.0,
+            ),
+            (
+                "pid_1_luid_0x00000000_0x00014265_phys_1_eng_0_engtype_3D",
+                20.0,
+            ),
+        ]);
+        assert_eq!(utilization_percent(&samples, RADEON), Some(40));
+    }
+
+    #[test]
     fn selects_hardware_adapters_by_dedicated_then_shared_memory() {
         // 渲染 + 显示的硬件适配器；软件设备；只能显示不能渲染的适配器。
         assert!(is_hardware_renderer(0b011));
@@ -576,6 +599,7 @@ mod tests {
 
     /// 在当前机器上真实走一遍系统调用；没有可用适配器的环境（如无显卡的 CI）直接跳过断言。
     #[test]
+    #[ignore = "queries the real GPU; run explicitly during authorized hardware validation"]
     fn queries_the_local_adapter_without_inconsistent_results() {
         let Some(gpu) = WindowsGpu::load() else {
             return;

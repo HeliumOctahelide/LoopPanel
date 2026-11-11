@@ -11,6 +11,7 @@ LoopPanel 使用以下直接 Rust 依赖；精确的传递依赖版本记录在�
 | resvg | 0.47.0 | MIT 或 Apache-2.0 |
 | serde | 1.0.229 | MIT 或 Apache-2.0 |
 | toml | 0.9.12+spec-1.1.0 | MIT 或 Apache-2.0 |
+| toml_parser | 1.1.3+spec-1.1.0 | MIT 或 Apache-2.0 |
 | windows-sys | 0.61.2 | MIT 或 Apache-2.0 |
 
 可选 CPU 温度功能随程序嵌入 [PawnIO.Modules 0.2.10](https://github.com/namazso/PawnIO.Modules/tree/0.2.10) 的 `IntelMSR` 与 `AMDFamily17` 模块，运行时按 CPU 厂商只加载其中一个。两个模块均采用 LGPL-2.1-or-later；本源码包保留 `IntelMSR.bin`、`IntelMSR.p`、`AMDFamily17.bin`、`AMDFamily17.p` 与 `COPYING`，交付目录的 `licenses/PawnIO.Modules-0.2.10/` 还随附完整官方 tag 源码归档，其中包含 `include/pawnio.inc` 和构建任务。所用官方模块发布包为 [release_0_2_10.zip](https://github.com/namazso/PawnIO.Modules/releases/download/0.2.10/release_0_2_10.zip)，SHA-256：

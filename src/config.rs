@@ -1,10 +1,13 @@
 use std::{
     fs,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use toml_parser::{Source, lexer::TokenKind};
+use windows_sys::Win32::Storage::FileSystem::CopyFileW;
 
 use crate::i18n::{message_key, retranslate, t, tr};
 
@@ -38,31 +41,73 @@ pub fn localize_comments(path: &Path) -> Result<bool> {
     }) else {
         return Ok(false);
     };
-    fs::write(path, localized).with_context(|| t!("config.write_failed", path = path.display()))?;
+    replace_config(path, |file| file.write_all(localized.as_bytes()))
+        .with_context(|| t!("config.write_failed", path = path.display()))?;
     Ok(true)
 }
 
 fn localized_comments(text: &str, translate: impl Fn(&str) -> Option<String>) -> Option<String> {
-    let mut changed = false;
     let mut output = String::with_capacity(text.len());
-    for line in text.split_inclusive('\n') {
-        let body = line.trim_end_matches(['\r', '\n']);
-        let ending = &line[body.len()..];
-        let content = body.trim_start();
-        let indent = &body[..body.len() - content.len()];
-        let comment = content.strip_prefix('#').map(str::trim);
-        match comment.and_then(|comment| translate(comment).filter(|new| new != comment)) {
-            Some(translated) => {
-                changed = true;
-                output.push_str(indent);
-                output.push_str("# ");
-                output.push_str(&translated);
-                output.push_str(ending);
-            }
-            None => output.push_str(line),
+    let mut copied = 0;
+    for token in Source::new(text).lex() {
+        if token.kind() != TokenKind::Comment {
+            continue;
+        }
+        let span = token.span();
+        let line_start = text[..span.start()]
+            .rfind('\n')
+            .map_or(0, |index| index + 1);
+        // 只翻译独占一行的注释，保留值后面的注释。
+        if !text[line_start..span.start()].trim().is_empty() {
+            continue;
+        }
+        let comment = text[span.start() + 1..span.end()].trim();
+        if let Some(translated) = translate(comment).filter(|new| new != comment) {
+            output.push_str(&text[copied..span.start()]);
+            output.push_str("# ");
+            output.push_str(&translated);
+            copied = span.end();
         }
     }
-    changed.then_some(output)
+    if copied == 0 {
+        return None;
+    }
+    output.push_str(&text[copied..]);
+    Some(output)
+}
+
+/// 完整写入同目录临时文件后，用单次重命名替换原文件。
+fn replace_config(
+    path: &Path,
+    write: impl FnOnce(&mut fs::File) -> io::Result<()>,
+) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    if fs::metadata(path)?.permissions().readonly() {
+        return Err(io::Error::from(io::ErrorKind::PermissionDenied));
+    }
+    let mut temporary = path.as_os_str().to_os_string();
+    temporary.push(".looppanel-tmp");
+    let temporary = PathBuf::from(temporary);
+    let source: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination: Vec<u16> = temporary.as_os_str().encode_wide().chain(Some(0)).collect();
+    // Windows 10 的原生复制保留文件权限；拒绝覆盖已有临时文件。
+    if unsafe { CopyFileW(source.as_ptr(), destination.as_ptr(), 1) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&temporary)?;
+        write(&mut file)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temporary, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -193,6 +238,62 @@ mod tests {
         for (legacy, key) in super::LEGACY_COMMENTS {
             assert!(super::COMMENT_KEYS.contains(&key), "{legacy}");
         }
+    }
+
+    #[test]
+    fn regression_localization_preserves_multiline_string_values() {
+        for quote in ["\"\"\"", "'''"] {
+            let text = format!("# Known comment\r\ntitle = {quote}\n# Known comment\n{quote}\n");
+            let translated = super::localized_comments(&text, |comment| {
+                (comment == "Known comment").then(|| "Translated comment".to_owned())
+            })
+            .unwrap();
+            assert!(translated.starts_with("# Translated comment\r\n"));
+            assert_eq!(
+                toml::from_str::<toml::Table>(&text).unwrap(),
+                toml::from_str::<toml::Table>(&translated).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn regression_partial_write_preserves_original_config() {
+        use std::io::{self, Write};
+        let path = std::env::temp_dir().join(format!("looppanel-atomic-{}.toml", process::id()));
+        fs::write(&path, "title = 'original'\n").unwrap();
+        let result = super::replace_config(&path, |file| {
+            file.write_all(b"partial")?;
+            Err(io::Error::other("simulated disk write failure"))
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "title = 'original'\n");
+        super::replace_config(&path, |file| file.write_all(b"title = 'translated'\n")).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "title = 'translated'\n");
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn regression_config_replacement_failure_and_readonly_preserve_original() {
+        use std::{io::Write, os::windows::fs::OpenOptionsExt};
+        let path = std::env::temp_dir().join(format!("looppanel-locked-{}.toml", process::id()));
+        fs::write(&path, "title = 'original'\n").unwrap();
+        let locked = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&path)
+            .unwrap();
+        assert!(super::replace_config(&path, |file| file.write_all(b"changed")).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "title = 'original'\n");
+        drop(locked);
+        let original_permissions = fs::metadata(&path).unwrap().permissions();
+        let mut readonly = original_permissions.clone();
+        readonly.set_readonly(true);
+        fs::set_permissions(&path, readonly).unwrap();
+        let result = super::replace_config(&path, |file| file.write_all(b"changed"));
+        fs::set_permissions(&path, original_permissions).unwrap();
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "title = 'original'\n");
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
