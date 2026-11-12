@@ -2,6 +2,8 @@
 
 日期：2026-11-11（香港时间）。用户明确授权管理员只读温度测试，并自行确认 UAC；禁止修改驱动和现有服务。
 
+后续固定节拍优化与 30 FPS 实机验收见[动画帧率验证](ANIMATION_FRAME_PACING.md)。本文保留优化前的测量记录。
+
 ## 新版 Intel 温度读取路径
 
 独立程序 `looppanel-temperature-readonly-test.exe` 直接调用修复分支 `0e25fd6` 的 `CpuTemperature::open/sample`，每 500 ms 读取一次，共 10 次，同时顺序查询原有温度服务。程序不调用显示、服务管理或驱动安装逻辑。

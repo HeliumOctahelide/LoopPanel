@@ -206,6 +206,12 @@ fn background_for(config: &Config, layout: Layout, simple_background: bool) -> R
     }
 }
 
+/// 延续原定节拍，避免线程晚醒的时间逐帧累积；落后一个完整周期时重新起拍。
+fn next_animation_deadline(previous: Instant, interval: Duration, now: Instant) -> Instant {
+    let next = previous + interval;
+    if next > now { next } else { now + interval }
+}
+
 pub fn run_until(
     config_path: Option<&str>,
     stop: &AtomicBool,
@@ -348,7 +354,11 @@ pub fn run_until(
         let mut content_changed = audio_changed || replaced;
         if content_due {
             frame_index = frame_index.wrapping_add(1);
-            next_content = now + content.background.delay(frame_index, content.config.fps);
+            next_content = next_animation_deadline(
+                next_content,
+                content.background.delay(frame_index, content.config.fps),
+                now,
+            );
             content_changed = true;
         }
         if dashboard_changed && !animated {
@@ -371,6 +381,69 @@ mod tests {
 
     use super::Rotation;
     use crate::settings::Layout;
+
+    #[test]
+    fn late_animation_wakes_do_not_accumulate_frame_drift() {
+        let start = Instant::now();
+        let interval = Duration::from_secs_f64(1.0 / 30.0);
+        let mut deadline = start + interval;
+        // 模拟实测约 13 ms 的晚醒；每次使用显示循环的实际期限计算路径。
+        for frame in 1..=300 {
+            deadline = super::next_animation_deadline(
+                deadline,
+                interval,
+                deadline + Duration::from_millis(13),
+            );
+            assert_eq!(deadline, start + interval * (frame + 1));
+        }
+    }
+
+    #[test]
+    fn missed_animation_period_restarts_without_a_catch_up_burst() {
+        let start = Instant::now();
+        for interval in [
+            Duration::from_secs_f64(1.0 / 30.0),
+            Duration::from_millis(50),
+        ] {
+            let previous = start + interval;
+            let late = start + Duration::from_secs(1);
+            assert_eq!(
+                super::next_animation_deadline(previous, interval, late),
+                late + interval
+            );
+            assert_eq!(
+                super::next_animation_deadline(previous, interval, previous + interval),
+                previous + interval * 2
+            );
+        }
+    }
+
+    #[test]
+    fn animation_schedule_preserves_variable_gif_delays_and_fps_limit() {
+        let background = crate::media::Background::Frames(
+            [50, 120, 20]
+                .into_iter()
+                .map(|millis| crate::media::MediaFrame {
+                    image: image::RgbaImage::new(1, 1),
+                    delay: Duration::from_millis(millis),
+                })
+                .collect(),
+        );
+        let start = Instant::now();
+        let mut deadline = start + background.delay(0, 30);
+        let mut expected = deadline;
+        for frame in 1..=30 {
+            let interval = background.delay(frame, 30);
+            assert!(interval >= Duration::from_secs_f64(1.0 / 30.0));
+            expected += interval;
+            deadline = super::next_animation_deadline(
+                deadline,
+                interval,
+                deadline + Duration::from_millis(13),
+            );
+            assert_eq!(deadline, expected);
+        }
+    }
 
     #[test]
     fn regression_reselecting_the_same_layout_jumps_back_and_restarts_timer() {
