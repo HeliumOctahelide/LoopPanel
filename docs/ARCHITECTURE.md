@@ -28,8 +28,9 @@ Windows/NVML ── MiniJinja ── SVG ── resvg ── 缓存 RGBA 仪表�
 | `media.rs` | PNG/JPEG/GIF、内置动效与中央 16:9 背景 |
 | `render.rs` | MiniJinja 上下文、SVG 栅格化、Alpha 合成和频谱绘制 |
 | `audio.rs` | WASAPI 回环、混音格式解码、FFT、16 段和平滑 |
-| `monitor.rs` | CPU 拓扑/负载/频率、内存、GPU 后端选择（NVML 优先，其次 ADL）与 I/O 快照 |
+| `monitor.rs` | CPU 拓扑/负载/频率、内存、GPU 后端选择（NVML 优先，其次 ADL，最后是 Windows 通用接口）与 I/O 快照 |
 | `adl.rs` | AMD Radeon 传感器：ADL 适配器选择与性能日志解码 |
+| `windows_gpu.rs` | 厂商无关的 GPU 传感器：PDH 的 GPU 计数器（占用率、显存用量）与 D3DKMT（显存总量、温度），用于没有 NVML/ADL 的显卡 |
 | `io_metrics.rs` | IP Helper 网络计数与 PDH 磁盘速率 |
 | `temperature*.rs` | PawnIO CPU 温度（Intel Package、AMD Tctl/Tdie）客户端和最小服务 |
 | `protocol.rs` | 480×480 RGBA → UYVY422 与帧封装 |

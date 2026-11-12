@@ -60,6 +60,7 @@ LoopPanel은 독립적인 커뮤니티 프로젝트이며, JONSBO, MacroSilicon,
 | AMD CPU, Family 17h–1Ah(Zen~Zen 5) | PawnIO `AMDFamily17` | SMN이 보고하는 온도 Tctl. 일부 Zen/Zen+ 모델은 Linux k10temp의 오프셋 표에 따라 Tdie로 환산 |
 | NVIDIA GPU | 드라이버 내장 NVML | 우선 사용 |
 | AMD Radeon GPU | 드라이버 내장 ADL(`atiadlxx.dll`) | NVML을 사용할 수 없을 때 사용. 드라이버가 `ADL2_New_QueryPMLogData_Get`을 지원해야 하며, AMD 어댑터가 여러 개일 때는 전용 VRAM이 가장 큰 것을 선택 |
+| 그 밖의 GPU(예: Intel Arc, 내장 그래픽) | Windows PDH 카운터 + D3DKMT | NVML과 ADL을 모두 사용할 수 없을 때 사용. 사용률, VRAM, 온도를 제공하며(온도는 드라이버가 보고하는 경우에만), 전력·팬·클럭은 없음. Radeon에서 값을 확인했고 Intel 그래픽에서는 실기 확인 전 |
 
 그 밖의 CPU(더 오래된 AMD 계열 포함)는 온도를 지원하지 않으며, 온도 서비스 설치 자체 점검이 실패하고 명확한 오류가 표시됩니다.
 

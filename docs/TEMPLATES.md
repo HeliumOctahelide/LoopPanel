@@ -50,7 +50,7 @@ LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有�
 
 ### GPU
 
-程序先尝试 NVIDIA NVML，不可用时再尝试 AMD ADL；两者都不可用时，所有字段为 `none`。AMD 下 `gpu.power_limit_w` 与 `gpu.performance_state` 始终为 `none`，`gpu.power_w` 取整卡功耗（驱动不提供时退回芯片功耗），`gpu.temperature_c` 取边缘温度（不提供时退回热点温度）。
+程序先尝试 NVIDIA NVML，不可用时再尝试 AMD ADL，最后退回 Windows 通用接口（PDH 与 D3DKMT，例如 Intel 显卡）；都不可用时，所有字段为 `none`。通用接口只提供 `gpu.load_percent`、`gpu.temperature_c` 和 `gpu.memory`，其余字段为 `none`；专用显存不足 512 MiB 的核显按共享显存统计。AMD 下 `gpu.power_limit_w` 与 `gpu.performance_state` 始终为 `none`，`gpu.power_w` 取整卡功耗（驱动不提供时退回芯片功耗），`gpu.temperature_c` 取边缘温度（不提供时退回热点温度）。
 
 | 表达式 | 类型 |
 |---|---|

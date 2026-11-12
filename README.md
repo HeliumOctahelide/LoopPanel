@@ -59,6 +59,7 @@ LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO、NVIDIA �
 | AMD CPU，Family 17h–1Ah（Zen 至 Zen 5） | PawnIO `AMDFamily17` | SMN 报告温度 Tctl；个别 Zen/Zen+ 型号按 Linux k10temp 的偏移表换算为 Tdie |
 | NVIDIA GPU | 驱动自带 NVML | 优先使用 |
 | AMD Radeon GPU | 驱动自带 ADL（`atiadlxx.dll`） | NVML 不可用时使用；需要驱动支持 `ADL2_New_QueryPMLogData_Get`；多个 AMD 适配器并存时取专用显存最大的一个 |
+| 其他 GPU（例如 Intel Arc、核显） | Windows PDH 计数器 + D3DKMT | NVML 与 ADL 都不可用时使用；提供占用率、显存和温度（温度取决于驱动是否上报），没有功耗、风扇和时钟；已在 Radeon 上验证读数，尚未在 Intel 显卡上实机验证 |
 
 其他 CPU（包括更早的 AMD 家族）没有温度支持，温度服务安装自检会失败并给出明确错误。
 

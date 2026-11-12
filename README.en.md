@@ -60,6 +60,7 @@ Sensor collection is independent of the display transport layer and is selected 
 | AMD CPU, Family 17h–1Ah (Zen to Zen 5) | PawnIO `AMDFamily17` | SMN-reported temperature Tctl; a few Zen/Zen+ models are converted to Tdie using the Linux k10temp offset table |
 | NVIDIA GPU | NVML bundled with the driver | Preferred |
 | AMD Radeon GPU | ADL bundled with the driver (`atiadlxx.dll`) | Used when NVML is unavailable; requires driver support for `ADL2_New_QueryPMLogData_Get`; when multiple AMD adapters are present, the one with the most dedicated video memory is used |
+| Other GPUs (for example Intel Arc or integrated graphics) | Windows PDH counters + D3DKMT | Used when neither NVML nor ADL is available; provides load, video memory and temperature (temperature depends on whether the driver reports it), with no power, fan or clock data; readings were checked on a Radeon but it has not been run on Intel graphics |
 
 Other CPUs (including earlier AMD families) have no temperature support, and the temperature service installation self-check fails with a clear error.
 
