@@ -16,6 +16,7 @@ not_installed = "CPU temperature: support not installed"
 [tray.menu]
 reconnect = "Reconnect"
 open_config = "Open configuration file"
+reload_config = "Reload settings"
 install_temperature = "Install CPU temperature support…"
 start_at_login = "Start at login"
 exit = "Exit"
@@ -176,6 +177,7 @@ usb_bulk_write_failed = "usb_bulk_write failed: {error}"
 libusb_unknown_error = "Unknown libusb0 error"
 
 [tray.error]
+reload_failed = "Could not reload the settings; the current display is kept.\n\n{error}"
 taskbar_message_failed = "Cannot register the TaskbarCreated message"
 module_handle_failed = "Cannot get the program module handle: {error}"
 window_class_failed = "Cannot register the tray window class: {error}"

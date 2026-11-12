@@ -56,6 +56,8 @@ const ICON_ID: u32 = 1;
 const WM_TRAY: u32 = WM_APP + 1;
 const WM_DISPLAY_READY: u32 = WM_APP + 2;
 const WM_DISPLAY_DONE: u32 = WM_APP + 3;
+/// `lparam` 是 `Box<String>` 的裸指针，由窗口过程收回。
+const WM_RELOAD_FAILED: u32 = WM_APP + 4;
 const NIN_KEYSELECT: u32 = NIN_SELECT | 1;
 
 const ID_OPEN_CONFIG: u32 = 1001;
@@ -68,6 +70,7 @@ const ID_LAYOUT_SIMPLE: u32 = 1007;
 const ID_UNIT_CELSIUS: u32 = 1008;
 const ID_UNIT_FAHRENHEIT: u32 = 1009;
 const ID_SIMPLE_BACKGROUND: u32 = 1010;
+const ID_RELOAD_CONFIG: u32 = 1011;
 
 pub fn run() -> Result<()> {
     let _display_lock = DisplayLock::acquire()?;
@@ -232,9 +235,24 @@ impl AppState {
         let settings = Arc::clone(&self.settings);
         let window_value = window as usize;
         self.worker = Some(thread::spawn(move || {
-            let result = display::run_until(None, &stop, &settings, || unsafe {
-                PostMessageW(window_value as HWND, WM_DISPLAY_READY, 0, 0);
-            });
+            let result = display::run_until(
+                None,
+                &stop,
+                &settings,
+                || unsafe {
+                    PostMessageW(window_value as HWND, WM_DISPLAY_READY, 0, 0);
+                },
+                |error| {
+                    // 显示线程不能弹窗：把原因交给托盘线程显示。
+                    let message = Box::into_raw(Box::new(format!("{error:#}")));
+                    let posted = unsafe {
+                        PostMessageW(window_value as HWND, WM_RELOAD_FAILED, 0, message as LPARAM)
+                    };
+                    if posted == 0 {
+                        drop(unsafe { Box::from_raw(message) });
+                    }
+                },
+            );
             unsafe {
                 PostMessageW(window_value as HWND, WM_DISPLAY_DONE, 0, 0);
             }
@@ -360,6 +378,12 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
         ID_OPEN_CONFIG as usize,
         &tr("tray.menu.open_config"),
     )?;
+    append_menu(
+        menu.0,
+        MF_STRING,
+        ID_RELOAD_CONFIG as usize,
+        &tr("tray.menu.reload_config"),
+    )?;
     if !temperature_installed {
         append_menu(
             menu.0,
@@ -448,6 +472,10 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             }
         }
         ID_INSTALL_TEMPERATURE => install_temperature_service(&executable)?,
+        ID_RELOAD_CONFIG => {
+            settings.request_reload();
+            unsafe { (&*state).wake_worker() };
+        }
         ID_LAYOUT_DEFAULT | ID_LAYOUT_SIMPLE | ID_UNIT_CELSIUS | ID_UNIT_FAHRENHEIT
         | ID_SIMPLE_BACKGROUND => {
             match command {
@@ -657,6 +685,14 @@ unsafe extern "system" fn window_proc(
             if selected && let Err(error) = show_menu(state_pointer, window) {
                 show_fatal_error(&error);
             }
+            0
+        }
+        WM_RELOAD_FAILED => {
+            let reason = unsafe { Box::from_raw(lparam as *mut String) };
+            show_fatal_error(&anyhow::anyhow!(
+                "{}",
+                t!("tray.error.reload_failed", error = reason)
+            ));
             0
         }
         WM_DISPLAY_READY => {

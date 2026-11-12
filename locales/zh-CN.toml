@@ -16,6 +16,7 @@ not_installed = "CPU 温度：尚未安装温度支持"
 [tray.menu]
 reconnect = "重新连接"
 open_config = "打开配置文件"
+reload_config = "重新载入设置"
 install_temperature = "安装 CPU 温度支持…"
 start_at_login = "登录时自动启动"
 exit = "退出"
@@ -176,6 +177,7 @@ usb_bulk_write_failed = "usb_bulk_write 失败：{error}"
 libusb_unknown_error = "未知 libusb0 错误"
 
 [tray.error]
+reload_failed = "无法重新载入设置，当前画面保持不变。\n\n{error}"
 taskbar_message_failed = "无法注册 TaskbarCreated 消息"
 module_handle_failed = "无法取得程序模块句柄：{error}"
 window_class_failed = "无法注册托盘窗口：{error}"

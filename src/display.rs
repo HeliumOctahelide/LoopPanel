@@ -43,8 +43,9 @@ pub fn run_until(
     stop: &AtomicBool,
     settings: &DisplaySettings,
     on_started: impl FnOnce(),
+    on_reload_failed: impl Fn(&anyhow::Error),
 ) -> Result<()> {
-    let (config, _) = Config::load(config_path)?;
+    let (mut config, _) = Config::load(config_path)?;
     let mut active_layout = settings.layout();
     let mut active_unit = settings.temperature_unit();
     let mut renderer = renderer_for(&config, active_layout)?;
@@ -81,7 +82,7 @@ pub fn run_until(
 
     let started = Instant::now();
     let mut animated = background.is_animated();
-    let sensor_interval = Duration::from_millis(config.sensor_interval_ms);
+    let mut sensor_interval = Duration::from_millis(config.sensor_interval_ms);
     let mut next_sensor = started + sensor_interval;
     let mut frame_index = 0_usize;
     let mut next_content = started + background.delay(0, config.fps);
@@ -114,6 +115,43 @@ pub fn run_until(
         let requested_layout = settings.layout();
         let requested_unit = settings.temperature_unit();
         let requested_simple_background = settings.simple_background();
+
+        // 托盘“重新载入设置”：先把新配置、模板和背景完整载入并试渲染一次，全部成功才替换；
+        // 任何一步失败都保留当前画面，只把原因报告给托盘。设备不重新初始化。
+        let mut reloaded = false;
+        if settings.take_reload_request() {
+            let loaded = Config::load(config_path).and_then(|(config, _)| {
+                let mut renderer = renderer_for(&config, requested_layout)?;
+                renderer.set_temperature_unit(requested_unit);
+                renderer.update(&config, &snapshot)?;
+                let background =
+                    background_for(&config, requested_layout, requested_simple_background)?;
+                Ok((config, renderer, background))
+            });
+            match loaded {
+                Ok((new_config, new_renderer, new_background)) => {
+                    config = new_config;
+                    renderer = new_renderer;
+                    background = new_background;
+                    active_layout = requested_layout;
+                    active_unit = requested_unit;
+                    active_simple_background = requested_simple_background;
+                    audio_spectrum = if renderer.audio_enabled() {
+                        OutputSpectrum::open().ok()
+                    } else {
+                        None
+                    };
+                    audio_bands = [0.0; BAND_COUNT];
+                    animated = background.is_animated();
+                    frame_index = 0;
+                    next_content = Instant::now() + background.delay(0, config.fps);
+                    sensor_interval = Duration::from_millis(config.sensor_interval_ms);
+                    reloaded = true;
+                }
+                Err(error) => on_reload_failed(&error),
+            }
+        }
+
         let layout_changed = requested_layout != active_layout;
         let background_changed =
             layout_changed || requested_simple_background != active_simple_background;
@@ -172,7 +210,7 @@ pub fn run_until(
                 }
             }
         }
-        let mut content_changed = audio_changed || settings_changed;
+        let mut content_changed = audio_changed || settings_changed || reloaded;
         if content_due {
             frame_index = frame_index.wrapping_add(1);
             next_content = now + background.delay(frame_index, config.fps);

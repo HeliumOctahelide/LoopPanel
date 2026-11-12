@@ -114,6 +114,7 @@ pub struct DisplaySettings {
     layout: AtomicU8,
     temperature_unit: AtomicU8,
     simple_background: AtomicBool,
+    reload_requested: AtomicBool,
 }
 
 impl DisplaySettings {
@@ -136,12 +137,23 @@ impl DisplaySettings {
             layout: AtomicU8::new(layout as u8),
             temperature_unit: AtomicU8::new(temperature_unit as u8),
             simple_background: AtomicBool::new(simple_background),
+            reload_requested: AtomicBool::new(false),
         }
     }
 
     /// 单纯布局下是否显示配置的背景图 / GIF。
     pub fn simple_background(&self) -> bool {
         self.simple_background.load(Ordering::Relaxed)
+    }
+
+    /// 托盘请求显示线程重新读取配置文件和模板。
+    pub fn request_reload(&self) {
+        self.reload_requested.store(true, Ordering::Relaxed);
+    }
+
+    /// 取走一次重新载入请求；没有请求时返回 `false`。
+    pub fn take_reload_request(&self) -> bool {
+        self.reload_requested.swap(false, Ordering::Relaxed)
     }
 
     pub fn set_simple_background(&self, enabled: bool) -> Result<()> {
@@ -225,6 +237,12 @@ mod tests {
 
         let settings = DisplaySettings::new(Layout::Simple, TemperatureUnit::Fahrenheit, false);
         assert!(!settings.simple_background());
+
+        // 重新载入请求只被取走一次。
+        assert!(!settings.take_reload_request());
+        settings.request_reload();
+        assert!(settings.take_reload_request());
+        assert!(!settings.take_reload_request());
         assert_eq!(settings.layout(), Layout::Simple);
         assert_eq!(settings.temperature_unit(), TemperatureUnit::Fahrenheit);
     }
