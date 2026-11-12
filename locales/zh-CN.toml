@@ -78,6 +78,7 @@ system_directory_failed = "无法取得 Windows 系统目录"
 registry_read_failed = "无法读取注册表字符串（Win32 错误 {code}）"
 
 [config]
+write_failed = "无法写入配置文件：{path}"
 not_found = "找不到配置文件：{path}"
 read_failed = "无法读取配置文件：{path}"
 format_invalid = "配置文件格式错误：{path}"
@@ -242,3 +243,10 @@ template_render_failed = "无法渲染 SVG 模板"
 
 [settings]
 save_failed = "无法保存显示设置：{error}"
+
+[config.comment]
+background = "随包提供三张原创样例；也可改成自己的 PNG、JPEG 或 GIF。"
+paths = "背景、模板和相对字体路径均以本配置文件所在目录为基准。"
+font = "默认使用 Windows 10/11 自带的 Bahnschrift；也可换成其他本地 TTF/TTC 字体。"
+fps = "GIF 保留原始帧间隔；fps 是 1..30 的动画上限。"
+sensor_interval = "硬件信息采样周期；默认 1 Hz。"

@@ -78,6 +78,7 @@ system_directory_failed = "Windows 시스템 폴더를 가져올 수 없습니�
 registry_read_failed = "레지스트리 문자열을 읽을 수 없습니다 (Win32 오류 {code})"
 
 [config]
+write_failed = "설정 파일을 쓸 수 없습니다: {path}"
 not_found = "구성 파일을 찾을 수 없습니다: {path}"
 read_failed = "구성 파일을 읽을 수 없습니다: {path}"
 format_invalid = "구성 파일 형식이 올바르지 않습니다: {path}"
@@ -242,3 +243,10 @@ template_render_failed = "SVG 템플릿을 렌더링할 수 없습니다"
 
 [settings]
 save_failed = "표시 설정을 저장할 수 없습니다: {error}"
+
+[config.comment]
+background = "원본 샘플 세 장이 함께 제공됩니다. 직접 준비한 PNG, JPEG, GIF로 바꿔도 됩니다."
+paths = "배경, 템플릿, 상대 경로 폰트는 모두 이 설정 파일이 있는 폴더를 기준으로 합니다."
+font = "기본값은 Windows 10/11에 포함된 Bahnschrift입니다. 다른 로컬 TTF/TTC 폰트로 바꿔도 됩니다."
+fps = "GIF는 원래 프레임 간격을 유지합니다. fps는 1~30 범위의 애니메이션 상한입니다."
+sensor_interval = "하드웨어 정보 샘플링 주기입니다. 기본값은 1Hz입니다."

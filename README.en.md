@@ -128,6 +128,8 @@ The background is fitted into the central 480×270 area with its aspect ratio pr
 
 After changing the configuration or template, exit from the tray and double-click `LoopPanel.exe` again to load the new content.
 
+The comments that ship in the configuration file are rewritten at startup in the Windows display language (Simplified Chinese, Korean, or English for everything else); comments you add yourself and all settings are left untouched.
+
 ## Template Syntax
 
 A template must produce a valid 480×480 SVG. LoopPanel uses strict undefined-variable checking and XML auto-escaping; a misspelled field causes an error instead of silently producing empty output.
