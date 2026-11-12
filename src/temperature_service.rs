@@ -57,6 +57,7 @@ use windows_sys::Win32::{
 };
 
 use crate::{
+    i18n::t,
     temperature::{
         CpuTemperature, ENDPOINT_KEY, ENDPOINT_VALUE, PIPE_NAME_PREFIX, cancel_and_drain,
         encode_service_response, service_sample,
@@ -81,7 +82,10 @@ pub fn run(arguments: &[String]) -> Result<()> {
         None => run_dispatcher(),
         Some("install") => install(),
         Some("uninstall") => uninstall(),
-        Some(command) => bail!("未知温度服务命令：{command}"),
+        Some(command) => bail!(
+            "{}",
+            t!("temperature_service.unknown_command", command = command)
+        ),
     }
 }
 
@@ -103,24 +107,37 @@ pub fn is_installed() -> bool {
 }
 
 fn install() -> Result<()> {
-    let mut sensor = CpuTemperature::open().context("安装前 PawnIO 自检失败")?;
-    sensor.sample().context("安装前 CPU 温度自检失败")?;
+    let mut sensor = CpuTemperature::open()
+        .with_context(|| t!("temperature_service.install_pawnio_check_failed"))?;
+    sensor
+        .sample()
+        .with_context(|| t!("temperature_service.install_temperature_check_failed"))?;
 
     let destination = installed_executable()?;
-    let source = std::env::current_exe().context("无法取得温度服务程序路径")?;
+    let source =
+        std::env::current_exe().with_context(|| t!("temperature_service.exe_path_unavailable"))?;
     ensure!(
         !is_installed(),
-        "CPU 温度服务已经安装；更新前请先运行 uninstall"
+        "{}",
+        t!("temperature_service.already_installed")
     );
     let directory = destination
         .parent()
         .expect("installed service always has a parent directory");
-    fs::create_dir_all(directory)
-        .with_context(|| format!("无法创建服务目录：{}", directory.display()))?;
+    fs::create_dir_all(directory).with_context(|| {
+        t!(
+            "temperature_service.create_directory_failed",
+            path = directory.display()
+        )
+    })?;
     let copied = source != destination;
     if copied {
-        fs::copy(&source, &destination)
-            .with_context(|| format!("无法复制温度服务到 {}", destination.display()))?;
+        fs::copy(&source, &destination).with_context(|| {
+            t!(
+                "temperature_service.copy_failed",
+                path = destination.display()
+            )
+        })?;
     }
     let service_temperature = match create_start_and_verify_service(&destination) {
         Ok(value) => value,
@@ -133,7 +150,13 @@ fn install() -> Result<()> {
         }
     };
 
-    println!("CPU 温度服务已安装并启动；当前 CPU 温度 {service_temperature}°C。");
+    println!(
+        "{}",
+        t!(
+            "temperature_service.installed_and_started",
+            temperature = service_temperature
+        )
+    );
     Ok(())
 }
 
@@ -143,8 +166,8 @@ fn uninstall() -> Result<()> {
         let manager = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
         ensure!(
             !manager.is_null(),
-            "无法打开服务控制管理器：{}",
-            last_error()
+            "{}",
+            t!("temperature_service.scm_open_failed", error = last_error())
         );
         let _manager = ServiceHandle(manager);
         let name = wide(SERVICE_NAME);
@@ -157,16 +180,22 @@ fn uninstall() -> Result<()> {
             let error = GetLastError();
             ensure!(
                 error == ERROR_SERVICE_DOES_NOT_EXIST,
-                "无法打开 CPU 温度服务：{}",
-                std::io::Error::from_raw_os_error(error as i32)
+                "{}",
+                t!(
+                    "temperature_service.service_open_failed",
+                    error = std::io::Error::from_raw_os_error(error as i32)
+                )
             );
         } else {
             let service = ServiceHandle(service);
             stop_service_and_wait(service.0)?;
             ensure!(
                 DeleteService(service.0) != 0,
-                "无法删除 CPU 温度服务：{}",
-                last_error()
+                "{}",
+                t!(
+                    "temperature_service.service_delete_failed",
+                    error = last_error()
+                )
             );
         }
     }
@@ -174,13 +203,17 @@ fn uninstall() -> Result<()> {
     clear_pipe_endpoint()?;
 
     if destination.exists() {
-        fs::remove_file(&destination)
-            .with_context(|| format!("无法删除 {}", destination.display()))?;
+        fs::remove_file(&destination).with_context(|| {
+            t!(
+                "temperature_service.delete_file_failed",
+                path = destination.display()
+            )
+        })?;
     }
     if let Some(directory) = destination.parent() {
         let _ = fs::remove_dir(directory);
     }
-    println!("CPU 温度服务已卸载。");
+    println!("{}", t!("temperature_service.uninstalled"));
     Ok(())
 }
 
@@ -193,8 +226,8 @@ fn create_start_and_verify_service(destination: &std::path::Path) -> Result<u32>
         );
         ensure!(
             !manager.is_null(),
-            "无法打开服务控制管理器：{}",
-            last_error()
+            "{}",
+            t!("temperature_service.scm_open_failed", error = last_error())
         );
         let _manager = ServiceHandle(manager);
 
@@ -219,14 +252,23 @@ fn create_start_and_verify_service(destination: &std::path::Path) -> Result<u32>
         );
         ensure!(
             !service.is_null(),
-            "无法创建 CPU 温度服务：{}",
-            last_error()
+            "{}",
+            t!(
+                "temperature_service.service_create_failed",
+                error = last_error()
+            )
         );
         let service = ServiceHandle(service);
         if StartServiceW(service.0, 0, ptr::null()) == 0 {
             let error = last_error();
             DeleteService(service.0);
-            bail!("CPU 温度服务已创建但无法启动：{error}");
+            bail!(
+                "{}",
+                t!(
+                    "temperature_service.created_but_start_failed",
+                    error = error
+                )
+            );
         }
 
         match wait_for_service_ready(service.0) {
@@ -234,7 +276,7 @@ fn create_start_and_verify_service(destination: &std::path::Path) -> Result<u32>
             Err(error) => {
                 let _ = stop_service_and_wait(service.0);
                 DeleteService(service.0);
-                Err(error.context("CPU 温度服务未能完成启动"))
+                Err(error.context(t!("temperature_service.start_incomplete")))
             }
         }
     }
@@ -247,9 +289,12 @@ fn wait_for_service_ready(service: windows_sys::Win32::System::Services::SC_HAND
         let status = query_service_status(service)?;
         if status.dwCurrentState == SERVICE_STOPPED {
             bail!(
-                "CPU 温度服务在启动期间停止（Win32={}，服务={}）",
-                status.dwWin32ExitCode,
-                status.dwServiceSpecificExitCode
+                "{}",
+                t!(
+                    "temperature_service.stopped_during_start",
+                    win32 = status.dwWin32ExitCode,
+                    service = status.dwServiceSpecificExitCode
+                )
             );
         }
         if status.dwCurrentState == SERVICE_RUNNING {
@@ -260,9 +305,12 @@ fn wait_for_service_ready(service: windows_sys::Win32::System::Services::SC_HAND
         }
         if Instant::now() >= deadline {
             if let Some(error) = last_pipe_error {
-                bail!("等待 CPU 温度管道就绪超时：{error}");
+                bail!(
+                    "{}",
+                    t!("temperature_service.pipe_wait_timeout", error = error)
+                );
             }
-            bail!("等待 CPU 温度服务进入运行状态超时");
+            bail!("{}", t!("temperature_service.service_wait_running_timeout"));
         }
         thread::sleep(Duration::from_millis(100));
     }
@@ -291,12 +339,19 @@ fn stop_service_and_wait(service: windows_sys::Win32::System::Services::SC_HANDL
                 }
                 ensure!(
                     error == ERROR_SERVICE_CANNOT_ACCEPT_CTRL,
-                    "无法停止 CPU 温度服务：{}",
-                    std::io::Error::from_raw_os_error(error as i32)
+                    "{}",
+                    t!(
+                        "temperature_service.service_stop_failed",
+                        error = std::io::Error::from_raw_os_error(error as i32)
+                    )
                 );
             }
         }
-        ensure!(Instant::now() < deadline, "等待 CPU 温度服务停止超时");
+        ensure!(
+            Instant::now() < deadline,
+            "{}",
+            t!("temperature_service.service_stop_timeout")
+        );
         thread::sleep(Duration::from_millis(100));
         status = query_service_status(service)?;
     }
@@ -309,7 +364,11 @@ fn stop_service_and_wait(service: windows_sys::Win32::System::Services::SC_HANDL
                 remaining.as_millis().min(u32::MAX as u128) as u32,
             )
         };
-        ensure!(wait == WAIT_OBJECT_0, "等待 CPU 温度服务进程退出超时");
+        ensure!(
+            wait == WAIT_OBJECT_0,
+            "{}",
+            t!("temperature_service.service_process_exit_timeout")
+        );
     }
     Ok(())
 }
@@ -328,7 +387,14 @@ fn query_service_status(
             &mut needed,
         )
     };
-    ensure!(success != 0, "无法查询 CPU 温度服务状态：{}", last_error());
+    ensure!(
+        success != 0,
+        "{}",
+        t!(
+            "temperature_service.status_query_failed",
+            error = last_error()
+        )
+    );
     Ok(status)
 }
 
@@ -345,7 +411,14 @@ fn run_dispatcher() -> Result<()> {
         },
     ];
     let success = unsafe { StartServiceCtrlDispatcherW(table.as_ptr()) };
-    ensure!(success != 0, "无法进入 Windows 服务模式：{}", last_error());
+    ensure!(
+        success != 0,
+        "{}",
+        t!(
+            "temperature_service.dispatcher_failed",
+            error = last_error()
+        )
+    );
     Ok(())
 }
 
@@ -457,12 +530,22 @@ fn run_pipe_server(
     };
     ensure!(
         pipe != INVALID_HANDLE_VALUE,
-        "无法创建 CPU 温度命名管道：{}",
-        last_error()
+        "{}",
+        t!(
+            "temperature_service.pipe_create_failed",
+            error = last_error()
+        )
     );
     let pipe = OwnedHandle(pipe);
     let event = OwnedHandle(unsafe { CreateEventW(ptr::null(), 1, 0, ptr::null()) });
-    ensure!(!event.0.is_null(), "无法创建管道事件：{}", last_error());
+    ensure!(
+        !event.0.is_null(),
+        "{}",
+        t!(
+            "temperature_service.event_create_failed",
+            error = last_error()
+        )
+    );
     let mut operation: OVERLAPPED = unsafe { zeroed() };
     operation.hEvent = event.0;
 
@@ -509,7 +592,13 @@ fn wait_for_io(
         return Ok(IoWait::TimedOut);
     }
     cancel_and_drain(handle, operation);
-    bail!("等待 CPU 温度管道操作失败：{}", last_error())
+    bail!(
+        "{}",
+        t!(
+            "temperature_service.pipe_io_wait_failed",
+            error = last_error()
+        )
+    )
 }
 
 fn connect_pipe(pipe: HANDLE, stop_event: HANDLE, operation: &mut OVERLAPPED) -> Result<bool> {
@@ -525,8 +614,11 @@ fn connect_pipe(pipe: HANDLE, stop_event: HANDLE, operation: &mut OVERLAPPED) ->
             IoWait::TimedOut => unreachable!("无限等待不会超时"),
         },
         error => bail!(
-            "等待 CPU 温度客户端失败：{}",
-            std::io::Error::from_raw_os_error(error as i32)
+            "{}",
+            t!(
+                "temperature_service.client_wait_failed",
+                error = std::io::Error::from_raw_os_error(error as i32)
+            )
         ),
     }
 }
@@ -557,8 +649,11 @@ fn serve_client(
         }
         ensure!(
             error == ERROR_IO_PENDING,
-            "读取温度请求失败：{}",
-            last_error()
+            "{}",
+            t!(
+                "temperature_service.request_read_failed",
+                error = last_error()
+            )
         );
         match wait_for_io(pipe, stop_event, operation, CLIENT_IO_TIMEOUT_MS)? {
             IoWait::Completed(read) => read,
@@ -586,34 +681,49 @@ fn serve_client(
         let error = unsafe { GetLastError() };
         ensure!(
             error == ERROR_IO_PENDING,
-            "写入温度响应失败：{}",
-            last_error()
+            "{}",
+            t!(
+                "temperature_service.response_write_failed",
+                error = last_error()
+            )
         );
         match wait_for_io(pipe, stop_event, operation, CLIENT_IO_TIMEOUT_MS)? {
             IoWait::Completed(written) => written,
             IoWait::Stopped | IoWait::TimedOut => return Ok(()),
         }
     };
-    ensure!(written == response.len() as u32, "CPU 温度响应未完整写入");
+    ensure!(
+        written == response.len() as u32,
+        "{}",
+        t!("temperature_service.response_incomplete")
+    );
     Ok(())
 }
 
 fn completed_bytes(handle: HANDLE, operation: &mut OVERLAPPED) -> Result<u32> {
     let mut transferred = 0_u32;
     let success = unsafe { GetOverlappedResult(handle, operation, &mut transferred, 0) };
-    ensure!(success != 0, "CPU 温度管道操作失败：{}", last_error());
+    ensure!(
+        success != 0,
+        "{}",
+        t!("temperature_service.pipe_io_failed", error = last_error())
+    );
     Ok(transferred)
 }
 
 fn random_pipe_name() -> Result<String> {
     let mut random = [0_u8; 16];
     let library_path = system_dll("bcrypt.dll")?;
-    let library = unsafe { Library::new(&library_path) }
-        .with_context(|| format!("无法加载 {}", library_path.display()))?;
+    let library = unsafe { Library::new(&library_path) }.with_context(|| {
+        t!(
+            "temperature_service.library_load_failed",
+            path = library_path.display()
+        )
+    })?;
     let generate = unsafe {
         *library
             .get::<BCryptGenRandom>(b"BCryptGenRandom\0")
-            .context("bcrypt.dll 缺少 BCryptGenRandom")?
+            .with_context(|| t!("temperature_service.bcrypt_missing_function"))?
     };
     let status = unsafe {
         generate(
@@ -625,8 +735,11 @@ fn random_pipe_name() -> Result<String> {
     };
     ensure!(
         status >= 0,
-        "无法生成温度管道名称（NTSTATUS 0x{:08X}）",
-        status as u32
+        "{}",
+        t!(
+            "temperature_service.pipe_name_failed",
+            status = format!("{:08X}", status as u32)
+        )
     );
     let mut name = String::from(PIPE_NAME_PREFIX);
     for byte in random {
@@ -655,8 +768,11 @@ fn publish_pipe_endpoint(pipe_name: &str) -> Result<()> {
     };
     ensure!(
         result == ERROR_SUCCESS,
-        "无法创建温度服务注册表项：{}",
-        std::io::Error::from_raw_os_error(result as i32)
+        "{}",
+        t!(
+            "temperature_service.registry_key_create_failed",
+            error = std::io::Error::from_raw_os_error(result as i32)
+        )
     );
     let key = RegistryKey(key);
     let result = unsafe {
@@ -671,8 +787,11 @@ fn publish_pipe_endpoint(pipe_name: &str) -> Result<()> {
     };
     ensure!(
         result == ERROR_SUCCESS,
-        "无法发布温度服务命名管道：{}",
-        std::io::Error::from_raw_os_error(result as i32)
+        "{}",
+        t!(
+            "temperature_service.endpoint_publish_failed",
+            error = std::io::Error::from_raw_os_error(result as i32)
+        )
     );
     Ok(())
 }
@@ -695,15 +814,21 @@ fn clear_pipe_endpoint() -> Result<()> {
     }
     ensure!(
         result == ERROR_SUCCESS,
-        "无法打开温度服务注册表项：{}",
-        std::io::Error::from_raw_os_error(result as i32)
+        "{}",
+        t!(
+            "temperature_service.registry_key_open_failed",
+            error = std::io::Error::from_raw_os_error(result as i32)
+        )
     );
     let key = RegistryKey(key);
     let result = unsafe { RegDeleteValueW(key.0, value_name.as_ptr()) };
     ensure!(
         result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND,
-        "无法清除温度服务命名管道：{}",
-        std::io::Error::from_raw_os_error(result as i32)
+        "{}",
+        t!(
+            "temperature_service.endpoint_clear_failed",
+            error = std::io::Error::from_raw_os_error(result as i32)
+        )
     );
     Ok(())
 }
@@ -773,7 +898,14 @@ impl PipeSecurity {
                 ptr::null_mut(),
             )
         };
-        ensure!(success != 0, "无法创建命名管道安全描述符：{}", last_error());
+        ensure!(
+            success != 0,
+            "{}",
+            t!(
+                "temperature_service.security_descriptor_failed",
+                error = last_error()
+            )
+        );
         Ok(Self {
             descriptor,
             attributes: SECURITY_ATTRIBUTES {

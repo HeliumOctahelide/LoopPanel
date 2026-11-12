@@ -1,6 +1,8 @@
 use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf};
 
 use anyhow::{Result, ensure};
+
+use crate::i18n::t;
 use windows_sys::Win32::{
     Foundation::ERROR_SUCCESS,
     System::Registry::{HKEY, RRF_RT_REG_SZ, RegGetValueW},
@@ -16,7 +18,8 @@ pub fn system_dll(name: &str) -> Result<PathBuf> {
     let length = unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
     ensure!(
         length > 0 && length < buffer.len() as u32,
-        "无法取得 Windows 系统目录"
+        "{}",
+        t!("win.system_directory_failed")
     );
     Ok(PathBuf::from(OsString::from_wide(&buffer[..length as usize])).join(name))
 }
@@ -42,7 +45,8 @@ pub(crate) fn registry_string(root: HKEY, subkey: &str, value: &str) -> Result<S
     };
     ensure!(
         result == ERROR_SUCCESS,
-        "无法读取注册表字符串（Win32 错误 {result}）"
+        "{}",
+        t!("win.registry_read_failed", code = result)
     );
     let mut buffer = vec![0_u16; bytes as usize / 2];
     let result = unsafe {
@@ -58,7 +62,8 @@ pub(crate) fn registry_string(root: HKEY, subkey: &str, value: &str) -> Result<S
     };
     ensure!(
         result == ERROR_SUCCESS,
-        "无法读取注册表字符串（Win32 错误 {result}）"
+        "{}",
+        t!("win.registry_read_failed", code = result)
     );
     let length = buffer
         .iter()

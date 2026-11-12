@@ -37,6 +37,7 @@ Windows/NVML ── MiniJinja ── SVG ── resvg ── 缓存 RGBA 仪表�
 | `display.rs` | 传感器、仪表、频谱、动画和保活调度 |
 | `tray.rs` | 单一 GUI 入口、首次 UAC 温度服务安装、Win32 托盘、工作线程和显式退出 |
 | `startup.rs` | HKCU 登录启动 |
+| `i18n.rs` + `locales/*.toml` | 界面文字消息目录：按 Windows 显示语言选择语言文件，按键查找，缺失时回退到英文 |
 | `process.rs` | 厂商软件（JONSBO-AIO、LCD Fusion）冲突检查和全局显示锁 |
 
 ## 权限边界

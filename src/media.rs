@@ -7,7 +7,10 @@ use image::{
     imageops::{self, FilterType},
 };
 
-use crate::protocol::{HEIGHT, WIDTH};
+use crate::{
+    i18n::t,
+    protocol::{HEIGHT, WIDTH},
+};
 
 const MAX_GIF_FRAMES: usize = 120;
 const BACKGROUND_TOP: i64 = 105;
@@ -35,20 +38,24 @@ impl Background {
             .is_some_and(|value| value.eq_ignore_ascii_case("gif"));
 
         if is_gif {
-            let file =
-                File::open(path).with_context(|| format!("无法打开 GIF：{}", path.display()))?;
+            let file = File::open(path)
+                .with_context(|| t!("media.gif_open_failed", path = path.display()))?;
             let decoder = GifDecoder::new(BufReader::new(file))
-                .with_context(|| format!("无法解码 GIF：{}", path.display()))?;
+                .with_context(|| t!("media.gif_decode_failed", path = path.display()))?;
             let mut frames = Vec::new();
             for frame in decoder.into_frames() {
                 if frames.len() == MAX_GIF_FRAMES {
                     anyhow::bail!(
-                        "GIF 超过 {MAX_GIF_FRAMES} 帧；请缩短动画以控制常驻内存：{}",
-                        path.display()
+                        "{}",
+                        t!(
+                            "media.gif_too_many_frames",
+                            max = MAX_GIF_FRAMES,
+                            path = path.display()
+                        )
                     );
                 }
-                let frame =
-                    frame.with_context(|| format!("无法读取 GIF 帧：{}", path.display()))?;
+                let frame = frame
+                    .with_context(|| t!("media.gif_frame_read_failed", path = path.display()))?;
                 let (numerator, denominator) = frame.delay().numer_denom_ms();
                 let millis = (numerator as f64 / denominator as f64).max(10.0);
                 frames.push(MediaFrame {
@@ -57,15 +64,15 @@ impl Background {
                 });
             }
             if frames.is_empty() {
-                anyhow::bail!("GIF 不含可显示的帧：{}", path.display());
+                anyhow::bail!("{}", t!("media.gif_no_frames", path = path.display()));
             }
             return Ok(Self::Frames(frames));
         }
 
         let image = ImageReader::open(path)
-            .with_context(|| format!("无法打开图片：{}", path.display()))?
+            .with_context(|| t!("media.image_open_failed", path = path.display()))?
             .decode()
-            .with_context(|| format!("无法解码图片：{}", path.display()))?
+            .with_context(|| t!("media.image_decode_failed", path = path.display()))?
             .to_rgba8();
         Ok(Self::Frames(vec![MediaFrame {
             image: background_frame(image),
@@ -120,22 +127,23 @@ pub fn load_first(path: &Path) -> Result<RgbaImage> {
         .is_some_and(|value| value.eq_ignore_ascii_case("gif"));
     if !is_gif {
         let image = ImageReader::open(path)
-            .with_context(|| format!("无法打开图片：{}", path.display()))?
+            .with_context(|| t!("media.image_open_failed", path = path.display()))?
             .decode()
-            .with_context(|| format!("无法解码图片：{}", path.display()))?
+            .with_context(|| t!("media.image_decode_failed", path = path.display()))?
             .to_rgba8();
         return Ok(cover(image));
     }
 
-    let file = File::open(path).with_context(|| format!("无法打开 GIF：{}", path.display()))?;
+    let file =
+        File::open(path).with_context(|| t!("media.gif_open_failed", path = path.display()))?;
     let decoder = GifDecoder::new(BufReader::new(file))
-        .with_context(|| format!("无法解码 GIF：{}", path.display()))?;
+        .with_context(|| t!("media.gif_decode_failed", path = path.display()))?;
     let frame = decoder
         .into_frames()
         .next()
         .transpose()
-        .with_context(|| format!("无法读取 GIF 首帧：{}", path.display()))?
-        .ok_or_else(|| anyhow::anyhow!("GIF 不含可显示的帧：{}", path.display()))?;
+        .with_context(|| t!("media.gif_first_frame_failed", path = path.display()))?
+        .ok_or_else(|| anyhow::anyhow!("{}", t!("media.gif_no_frames", path = path.display())))?;
     Ok(cover(frame.into_buffer()))
 }
 

@@ -2,6 +2,7 @@ mod adl;
 pub mod audio;
 pub mod config;
 pub mod display;
+mod i18n;
 pub mod io_metrics;
 pub mod media;
 pub mod monitor;

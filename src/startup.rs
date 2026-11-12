@@ -10,7 +10,7 @@ use windows_sys::Win32::{
     },
 };
 
-use crate::win::wide;
+use crate::{i18n::t, win::wide};
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const VALUE_NAME: &str = "LoopPanel";
@@ -32,7 +32,7 @@ pub fn is_enabled(executable: &Path) -> Result<bool> {
     if result == ERROR_FILE_NOT_FOUND {
         return Ok(false);
     }
-    check_registry(result, "无法读取登录启动设置")?;
+    check_registry(result, &t!("startup.read_failed"))?;
     let key = RegistryKey(key);
     let mut kind = 0_u32;
     let mut buffer = [0_u16; 260];
@@ -50,7 +50,7 @@ pub fn is_enabled(executable: &Path) -> Result<bool> {
     if result == ERROR_FILE_NOT_FOUND {
         return Ok(false);
     }
-    check_registry(result, "无法读取登录启动设置")?;
+    check_registry(result, &t!("startup.read_failed"))?;
     if kind != REG_SZ {
         return Ok(false);
     }
@@ -80,20 +80,17 @@ pub fn set_enabled(executable: &Path, enabled: bool) -> Result<()> {
         if result == ERROR_FILE_NOT_FOUND {
             return Ok(());
         }
-        check_registry(result, "无法打开登录启动设置")?;
+        check_registry(result, &t!("startup.open_failed"))?;
         let key = RegistryKey(key);
         let result = unsafe { RegDeleteValueW(key.0, name.as_ptr()) };
         if result != ERROR_FILE_NOT_FOUND {
-            check_registry(result, "无法关闭登录启动")?;
+            check_registry(result, &t!("startup.disable_failed"))?;
         }
         return Ok(());
     }
 
     let command = startup_command(executable);
-    ensure!(
-        command.len() <= 260,
-        "登录启动命令超过 Windows 的 260 字符限制"
-    );
+    ensure!(command.len() <= 260, "{}", t!("startup.command_too_long"));
     let mut key = ptr::null_mut();
     let result = unsafe {
         RegCreateKeyExW(
@@ -108,7 +105,7 @@ pub fn set_enabled(executable: &Path, enabled: bool) -> Result<()> {
             ptr::null_mut(),
         )
     };
-    check_registry(result, "无法打开登录启动设置")?;
+    check_registry(result, &t!("startup.open_failed"))?;
     let key = RegistryKey(key);
     let result = unsafe {
         RegSetValueExW(
@@ -120,7 +117,7 @@ pub fn set_enabled(executable: &Path, enabled: bool) -> Result<()> {
             (command.len() * size_of::<u16>()) as u32,
         )
     };
-    check_registry(result, "无法启用登录启动")
+    check_registry(result, &t!("startup.enable_failed"))
 }
 
 fn startup_command(executable: &Path) -> Vec<u16> {
@@ -134,8 +131,12 @@ fn startup_command(executable: &Path) -> Vec<u16> {
 fn check_registry(result: u32, action: &str) -> Result<()> {
     ensure!(
         result == ERROR_SUCCESS,
-        "{action}：{}",
-        std::io::Error::from_raw_os_error(result as i32)
+        "{}",
+        t!(
+            "startup.registry_failed",
+            action = action,
+            error = std::io::Error::from_raw_os_error(result as i32)
+        )
     );
     Ok(())
 }

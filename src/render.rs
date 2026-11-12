@@ -8,6 +8,7 @@ use serde::Serialize;
 
 use crate::{
     config::Config,
+    i18n::t,
     monitor::Snapshot,
     protocol::{HEIGHT, WIDTH},
 };
@@ -31,18 +32,27 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(template_path: &Path, font_path: &Path) -> Result<Self> {
-        let template = fs::read_to_string(template_path)
-            .with_context(|| format!("无法读取 SVG 模板：{}", template_path.display()))?;
+        let template = fs::read_to_string(template_path).with_context(|| {
+            t!(
+                "render.template_read_failed",
+                path = template_path.display()
+            )
+        })?;
         let audio_enabled = template.contains(r#"id="audio-spectrum""#);
         let mut environment = Environment::new();
         environment.set_auto_escape_callback(|_| AutoEscape::Html);
         environment.set_undefined_behavior(UndefinedBehavior::Strict);
         environment
             .add_template_owned("dashboard.svg".to_owned(), template)
-            .with_context(|| format!("无法解析 SVG 模板：{}", template_path.display()))?;
+            .with_context(|| {
+                t!(
+                    "render.template_parse_failed",
+                    path = template_path.display()
+                )
+            })?;
 
         let font_data = fs::read(font_path)
-            .with_context(|| format!("无法读取字体：{}", font_path.display()))?;
+            .with_context(|| t!("render.font_read_failed", path = font_path.display()))?;
         let mut svg_options = usvg::Options::default();
         let family = {
             let database = svg_options.fontdb_mut();
@@ -52,7 +62,9 @@ impl Renderer {
                 .flat_map(|face| face.families.iter())
                 .map(|(name, _)| name.clone())
                 .next()
-                .ok_or_else(|| anyhow::anyhow!("字体中没有可用字形面：{}", font_path.display()))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!("{}", t!("render.font_no_face", path = font_path.display()))
+                })?;
             database.set_sans_serif_family(family.clone());
             family
         };
@@ -73,9 +85,14 @@ impl Renderer {
 
     pub fn update(&mut self, config: &Config, snapshot: &Snapshot) -> Result<()> {
         let svg = self.render_svg(config, snapshot)?;
-        let tree = usvg::Tree::from_str(&svg, &self.svg_options).context("模板生成的 SVG 无效")?;
-        let mut pixmap = tiny_skia::Pixmap::new(WIDTH as u32, HEIGHT as u32)
-            .ok_or_else(|| anyhow::anyhow!("无法分配 {WIDTH}×{HEIGHT} RGBA 画布"))?;
+        let tree = usvg::Tree::from_str(&svg, &self.svg_options)
+            .with_context(|| t!("render.generated_svg_invalid"))?;
+        let mut pixmap = tiny_skia::Pixmap::new(WIDTH as u32, HEIGHT as u32).ok_or_else(|| {
+            anyhow::anyhow!(
+                "{}",
+                t!("render.canvas_alloc_failed", width = WIDTH, height = HEIGHT)
+            )
+        })?;
         let size = tree.size();
         let transform = tiny_skia::Transform::from_scale(
             WIDTH as f32 / size.width(),
@@ -83,7 +100,7 @@ impl Renderer {
         );
         resvg::render(&tree, transform, &mut pixmap.as_mut());
         self.overlay = RgbaImage::from_raw(WIDTH as u32, HEIGHT as u32, pixmap.take_demultiplied())
-            .ok_or_else(|| anyhow::anyhow!("SVG 渲染器返回了错误的像素缓冲区长度"))?;
+            .ok_or_else(|| anyhow::anyhow!("{}", t!("render.pixel_buffer_mismatch")))?;
         Ok(())
     }
 
@@ -140,7 +157,7 @@ impl Renderer {
         self.environment
             .get_template("dashboard.svg")?
             .render(context)
-            .context("无法渲染 SVG 模板")
+            .with_context(|| t!("render.template_render_failed"))
     }
 }
 
