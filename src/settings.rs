@@ -1,8 +1,9 @@
-//! 托盘菜单里的显示选项（布局、温度单位）：保存在当前用户的注册表中，运行时与显示线程共享。
+//! 托盘菜单里的显示选项（布局、自动轮换、温度单位）：保存在当前用户的注册表中，运行时与显示线程共享。
 
 use std::{
     mem::size_of,
-    sync::atomic::{AtomicBool, AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering},
+    time::Duration,
 };
 
 use anyhow::{Result, ensure};
@@ -20,6 +21,12 @@ const SETTINGS_KEY: &str = r"Software\LoopPanel";
 const LAYOUT_VALUE: &str = "Layout";
 const TEMPERATURE_UNIT_VALUE: &str = "TemperatureUnit";
 const SIMPLE_BACKGROUND_VALUE: &str = "SimpleBackground";
+const ROTATION_VALUE: &str = "Rotation";
+const ROTATION_INTERVAL_VALUE: &str = "RotationIntervalSeconds";
+/// 自动轮换的默认间隔。
+pub const DEFAULT_ROTATION_SECONDS: u32 = 30;
+/// 注册表里手写的间隔也接受，但限制在这个范围内。
+const ROTATION_SECONDS_RANGE: std::ops::RangeInclusive<u32> = 5..=3600;
 const ON: &str = "on";
 const OFF: &str = "off";
 
@@ -29,30 +36,55 @@ pub enum Layout {
     Default,
     /// 内置的大字布局：只有 CPU 温度和占用率。
     Simple,
+    /// 内置的大字布局：CPU 与 GPU 各一行，温度加占用率。
+    CpuGpu,
+    /// 内置的大字布局：只有 CPU 温度和 GPU 温度。
+    Temperatures,
+    /// 内置的大字布局：时钟，下方是 CPU / GPU 温度。
+    Clock,
 }
 
 impl Layout {
+    /// 菜单顺序，也是自动轮换的顺序。
+    pub const ALL: [Self; 5] = [
+        Self::Default,
+        Self::Simple,
+        Self::CpuGpu,
+        Self::Temperatures,
+        Self::Clock,
+    ];
+
     fn from_u8(value: u8) -> Self {
-        if value == Self::Simple as u8 {
-            Self::Simple
-        } else {
-            Self::Default
-        }
+        Self::ALL
+            .into_iter()
+            .find(|layout| *layout as u8 == value)
+            .unwrap_or(Self::Default)
     }
 
     fn name(self) -> &'static str {
         match self {
             Self::Default => "default",
             Self::Simple => "simple",
+            Self::CpuGpu => "cpu_gpu",
+            Self::Temperatures => "temperatures",
+            Self::Clock => "clock",
         }
     }
 
     fn from_name(name: &str) -> Self {
-        if name == Self::Simple.name() {
-            Self::Simple
-        } else {
-            Self::Default
-        }
+        Self::ALL
+            .into_iter()
+            .find(|layout| layout.name() == name)
+            .unwrap_or(Self::Default)
+    }
+
+    /// 自动轮换时排在后面的布局；最后一个之后回到第一个。
+    pub fn next(self) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|layout| *layout == self)
+            .unwrap_or(0);
+        Self::ALL[(index + 1) % Self::ALL.len()]
     }
 }
 
@@ -114,6 +146,8 @@ pub struct DisplaySettings {
     layout: AtomicU8,
     temperature_unit: AtomicU8,
     simple_background: AtomicBool,
+    rotation: AtomicBool,
+    rotation_seconds: AtomicU32,
     reload_requested: AtomicBool,
 }
 
@@ -129,7 +163,18 @@ impl DisplaySettings {
         // 单纯布局默认把配置的背景铺在下面。
         let simple_background =
             load_value(SIMPLE_BACKGROUND_VALUE).is_none_or(|value| value != OFF);
-        Self::new(layout, temperature_unit, simple_background)
+        let settings = Self::new(layout, temperature_unit, simple_background);
+        settings.rotation.store(
+            load_value(ROTATION_VALUE).is_some_and(|value| value == ON),
+            Ordering::Relaxed,
+        );
+        if let Some(seconds) = load_value(ROTATION_INTERVAL_VALUE)
+            .and_then(|value| value.parse().ok())
+            .filter(|seconds| ROTATION_SECONDS_RANGE.contains(seconds))
+        {
+            settings.rotation_seconds.store(seconds, Ordering::Relaxed);
+        }
+        settings
     }
 
     pub fn new(layout: Layout, temperature_unit: TemperatureUnit, simple_background: bool) -> Self {
@@ -137,11 +182,13 @@ impl DisplaySettings {
             layout: AtomicU8::new(layout as u8),
             temperature_unit: AtomicU8::new(temperature_unit as u8),
             simple_background: AtomicBool::new(simple_background),
+            rotation: AtomicBool::new(false),
+            rotation_seconds: AtomicU32::new(DEFAULT_ROTATION_SECONDS),
             reload_requested: AtomicBool::new(false),
         }
     }
 
-    /// 单纯布局下是否显示配置的背景图 / GIF。
+    /// 内置大字布局下是否显示配置的背景图 / GIF。
     pub fn simple_background(&self) -> bool {
         self.simple_background.load(Ordering::Relaxed)
     }
@@ -159,6 +206,36 @@ impl DisplaySettings {
     pub fn set_simple_background(&self, enabled: bool) -> Result<()> {
         save_value(SIMPLE_BACKGROUND_VALUE, if enabled { ON } else { OFF })?;
         self.simple_background.store(enabled, Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// 开启自动轮换时返回切换间隔，关闭时返回 `None`。
+    pub fn rotation(&self) -> Option<Duration> {
+        self.rotation_enabled()
+            .then(|| Duration::from_secs(u64::from(self.rotation_seconds())))
+    }
+
+    pub fn rotation_enabled(&self) -> bool {
+        self.rotation.load(Ordering::Relaxed)
+    }
+
+    pub fn rotation_seconds(&self) -> u32 {
+        self.rotation_seconds.load(Ordering::Relaxed)
+    }
+
+    pub fn set_rotation_enabled(&self, enabled: bool) -> Result<()> {
+        save_value(ROTATION_VALUE, if enabled { ON } else { OFF })?;
+        self.rotation.store(enabled, Ordering::Relaxed);
+        Ok(())
+    }
+
+    pub fn set_rotation_seconds(&self, seconds: u32) -> Result<()> {
+        let seconds = seconds.clamp(
+            *ROTATION_SECONDS_RANGE.start(),
+            *ROTATION_SECONDS_RANGE.end(),
+        );
+        save_value(ROTATION_INTERVAL_VALUE, &seconds.to_string())?;
+        self.rotation_seconds.store(seconds, Ordering::Relaxed);
         Ok(())
     }
 
@@ -218,10 +295,15 @@ mod tests {
 
     #[test]
     fn options_round_trip_and_unknown_values_fall_back_to_defaults() {
-        for layout in [Layout::Default, Layout::Simple] {
+        let mut visited = Layout::Default;
+        for layout in Layout::ALL {
             assert_eq!(Layout::from_u8(layout as u8), layout);
             assert_eq!(Layout::from_name(layout.name()), layout);
+            // 轮换按菜单顺序走完所有布局。
+            assert_eq!(visited, layout);
+            visited = visited.next();
         }
+        assert_eq!(visited, Layout::Default);
         assert_eq!(Layout::from_u8(200), Layout::Default);
         assert_eq!(Layout::from_name("no-such-layout"), Layout::Default);
 
@@ -237,6 +319,9 @@ mod tests {
 
         let settings = DisplaySettings::new(Layout::Simple, TemperatureUnit::Fahrenheit, false);
         assert!(!settings.simple_background());
+        // 自动轮换默认关闭，间隔默认 30 秒。
+        assert_eq!(settings.rotation(), None);
+        assert_eq!(settings.rotation_seconds(), 30);
 
         // 重新载入请求只被取走一次。
         assert!(!settings.take_reload_request());

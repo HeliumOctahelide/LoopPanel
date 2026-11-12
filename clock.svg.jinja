@@ -1,0 +1,25 @@
+{%- set cpu_text %}{% if cpu.temperature is none %}--{% else %}{{ "%d"|format(cpu.temperature) }}°{{ temperature_unit }}{% endif %}{% endset -%}
+{%- set gpu_text %}{% if gpu.temperature is none %}--{% else %}{{ "%d"|format(gpu.temperature) }}°{{ temperature_unit }}{% endif %}{% endset -%}
+{#- `time` 是 HH:MM:SS；大字只显示到分钟。 -#}
+{%- set clock_text = time[:5] -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" xml:space="preserve">
+  <!-- 配置的背景图 / GIF 铺满在下面；这层半透明底色压暗背景，保证大字可读。 -->
+  <rect x="0" y="0" width="480" height="480" fill="#0e1114" fill-opacity="0.55"/>
+  <line x1="40" y1="300" x2="440" y2="300" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+
+  <!-- 投影：同样的文字向下偏移，垫在正文下面。 -->
+  <g font-family="sans-serif" text-anchor="middle" fill="#000000" fill-opacity="0.5" stroke="#000000" stroke-opacity="0.5" stroke-linejoin="round">
+    <text x="244" y="237" font-size="176" stroke-width="8">{{ clock_text }}</text>
+    <text x="123" y="445" font-size="76" stroke-width="5">{{ cpu_text }}</text>
+    <text x="363" y="445" font-size="76" stroke-width="5">{{ gpu_text }}</text>
+  </g>
+
+  <!-- 正文：深色描边在下、填充在上。 -->
+  <g font-family="sans-serif" text-anchor="middle" stroke="#0e1114" stroke-linejoin="round" paint-order="stroke">
+    <text x="240" y="230" font-size="176" stroke-width="8" fill="#f2f4f6">{{ clock_text }}</text>
+    <text x="120" y="356" font-size="30" letter-spacing="3" stroke-width="4" fill="#c3ccd5">CPU</text>
+    <text x="120" y="440" font-size="76" stroke-width="5" fill="{% if cpu.temperature_c is none %}#9aa3ad{% elif cpu.temperature_c >= 85 %}#ff5a5a{% elif cpu.temperature_c >= 71 %}#ff8c42{% elif cpu.temperature_c >= 56 %}#f2c14e{% else %}#3ddc97{% endif %}">{{ cpu_text }}</text>
+    <text x="360" y="356" font-size="30" letter-spacing="3" stroke-width="4" fill="#c3ccd5">GPU</text>
+    <text x="360" y="440" font-size="76" stroke-width="5" fill="{% if gpu.temperature_c is none %}#9aa3ad{% elif gpu.temperature_c >= 85 %}#ff5a5a{% elif gpu.temperature_c >= 71 %}#ff8c42{% elif gpu.temperature_c >= 56 %}#f2c14e{% else %}#3ddc97{% endif %}">{{ gpu_text }}</text>
+  </g>
+</svg>

@@ -1,0 +1,31 @@
+{%- set cpu_text %}{% if cpu.temperature is none %}--{% else %}{{ "%d"|format(cpu.temperature) }}°{{ temperature_unit }}{% endif %}{% endset -%}
+{%- set cpu_load %}{% if cpu.load_percent is none %}--{% else %}{{ "%.0f"|format(cpu.load_percent) }}%{% endif %}{% endset -%}
+{%- set cpu_size = 104 if cpu.temperature is not none and cpu.temperature >= 100 else 128 -%}
+{%- set gpu_text %}{% if gpu.temperature is none %}--{% else %}{{ "%d"|format(gpu.temperature) }}°{{ temperature_unit }}{% endif %}{% endset -%}
+{%- set gpu_load %}{% if gpu.load_percent is none %}--{% else %}{{ "%.0f"|format(gpu.load_percent) }}%{% endif %}{% endset -%}
+{%- set gpu_size = 104 if gpu.temperature is not none and gpu.temperature >= 100 else 128 -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" xml:space="preserve">
+  <!-- 配置的背景图 / GIF 铺满在下面；这层半透明底色压暗背景，保证大字可读。 -->
+  <rect x="0" y="0" width="480" height="480" fill="#0e1114" fill-opacity="0.55"/>
+  <line x1="40" y1="240" x2="440" y2="240" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+
+  <!-- 投影：同样的文字向下偏移，垫在正文下面。 -->
+  <g font-family="sans-serif" fill="#000000" fill-opacity="0.5" stroke="#000000" stroke-opacity="0.5" stroke-linejoin="round">
+    <text x="28" y="197" font-size="{{ cpu_size }}" stroke-width="7">{{ cpu_text }}</text>
+    <text x="460" y="195" font-size="64" stroke-width="5" text-anchor="end">{{ cpu_load }}</text>
+    <text x="28" y="437" font-size="{{ gpu_size }}" stroke-width="7">{{ gpu_text }}</text>
+    <text x="460" y="435" font-size="64" stroke-width="5" text-anchor="end">{{ gpu_load }}</text>
+  </g>
+
+  <!-- 正文：深色描边在下、填充在上。 -->
+  <g font-family="sans-serif" stroke="#0e1114" stroke-linejoin="round" paint-order="stroke">
+    <text x="26" y="56" font-size="38" letter-spacing="3" stroke-width="4" fill="#c3ccd5">CPU</text>
+    <text x="456" y="124" font-size="26" letter-spacing="2" stroke-width="3" text-anchor="end" fill="#c3ccd5">LOAD</text>
+    <text x="24" y="190" font-size="{{ cpu_size }}" stroke-width="7" fill="{% if cpu.temperature_c is none %}#9aa3ad{% elif cpu.temperature_c >= 85 %}#ff5a5a{% elif cpu.temperature_c >= 71 %}#ff8c42{% elif cpu.temperature_c >= 56 %}#f2c14e{% else %}#3ddc97{% endif %}">{{ cpu_text }}</text>
+    <text x="456" y="190" font-size="64" stroke-width="5" text-anchor="end" fill="#f2f4f6">{{ cpu_load }}</text>
+    <text x="26" y="296" font-size="38" letter-spacing="3" stroke-width="4" fill="#c3ccd5">GPU</text>
+    <text x="456" y="364" font-size="26" letter-spacing="2" stroke-width="3" text-anchor="end" fill="#c3ccd5">LOAD</text>
+    <text x="24" y="430" font-size="{{ gpu_size }}" stroke-width="7" fill="{% if gpu.temperature_c is none %}#9aa3ad{% elif gpu.temperature_c >= 85 %}#ff5a5a{% elif gpu.temperature_c >= 71 %}#ff8c42{% elif gpu.temperature_c >= 56 %}#f2c14e{% else %}#3ddc97{% endif %}">{{ gpu_text }}</text>
+    <text x="456" y="430" font-size="64" stroke-width="5" text-anchor="end" fill="#f2f4f6">{{ gpu_load }}</text>
+  </g>
+</svg>

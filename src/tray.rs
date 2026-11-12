@@ -65,12 +65,17 @@ const ID_STARTUP: u32 = 1002;
 const ID_RETRY: u32 = 1003;
 const ID_EXIT: u32 = 1004;
 const ID_INSTALL_TEMPERATURE: u32 = 1005;
-const ID_LAYOUT_DEFAULT: u32 = 1006;
-const ID_LAYOUT_SIMPLE: u32 = 1007;
 const ID_UNIT_CELSIUS: u32 = 1008;
 const ID_UNIT_FAHRENHEIT: u32 = 1009;
 const ID_SIMPLE_BACKGROUND: u32 = 1010;
 const ID_RELOAD_CONFIG: u32 = 1011;
+const ID_ROTATION: u32 = 1012;
+/// 布局命令号从这里起按 `Layout::ALL` 的顺序排列。
+const ID_LAYOUT_FIRST: u32 = 1100;
+/// 轮换间隔命令号从这里起按 `ROTATION_CHOICES` 的顺序排列。
+const ID_ROTATION_INTERVAL_FIRST: u32 = 1200;
+/// 菜单里可选的轮换间隔（秒）。
+const ROTATION_CHOICES: [u32; 4] = [10, 30, 60, 300];
 
 pub fn run() -> Result<()> {
     let _display_lock = DisplayLock::acquire()?;
@@ -395,18 +400,34 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
     append_choice_menu(
         menu.0,
         &tr("tray.menu.display"),
-        &[
-            (
-                ID_LAYOUT_DEFAULT,
-                tr("tray.menu.display_default"),
-                layout == Layout::Default,
-            ),
-            (
-                ID_LAYOUT_SIMPLE,
-                tr("tray.menu.display_simple"),
-                layout == Layout::Simple,
-            ),
-        ],
+        &Layout::ALL
+            .iter()
+            .zip(ID_LAYOUT_FIRST..)
+            .map(|(choice, id)| (id, layout_label(*choice), *choice == layout))
+            .collect::<Vec<_>>(),
+    )?;
+    let rotation_enabled = settings.rotation_enabled();
+    append_menu(
+        menu.0,
+        MF_STRING | if rotation_enabled { MF_CHECKED } else { 0 },
+        ID_ROTATION as usize,
+        &tr("tray.menu.rotation"),
+    )?;
+    let rotation_seconds = settings.rotation_seconds();
+    append_choice_menu(
+        menu.0,
+        &tr("tray.menu.rotation_interval"),
+        &ROTATION_CHOICES
+            .iter()
+            .zip(ID_ROTATION_INTERVAL_FIRST..)
+            .map(|(seconds, id)| {
+                (
+                    id,
+                    rotation_interval_label(*seconds),
+                    *seconds == rotation_seconds,
+                )
+            })
+            .collect::<Vec<_>>(),
     )?;
     append_choice_menu(
         menu.0,
@@ -476,12 +497,25 @@ fn show_menu(state: *mut AppState, window: HWND) -> Result<()> {
             settings.request_reload();
             unsafe { (&*state).wake_worker() };
         }
-        ID_LAYOUT_DEFAULT | ID_LAYOUT_SIMPLE | ID_UNIT_CELSIUS | ID_UNIT_FAHRENHEIT
-        | ID_SIMPLE_BACKGROUND => {
+        ID_ROTATION => {
+            settings.set_rotation_enabled(!rotation_enabled)?;
+            unsafe { (&*state).wake_worker() };
+        }
+        _ if choice(command, ID_LAYOUT_FIRST, &Layout::ALL).is_some()
+            || choice(command, ID_ROTATION_INTERVAL_FIRST, &ROTATION_CHOICES).is_some() =>
+        {
+            if let Some(layout) = choice(command, ID_LAYOUT_FIRST, &Layout::ALL) {
+                settings.set_layout(layout)?;
+            } else if let Some(seconds) =
+                choice(command, ID_ROTATION_INTERVAL_FIRST, &ROTATION_CHOICES)
+            {
+                settings.set_rotation_seconds(seconds)?;
+            }
+            unsafe { (&*state).wake_worker() };
+        }
+        ID_UNIT_CELSIUS | ID_UNIT_FAHRENHEIT | ID_SIMPLE_BACKGROUND => {
             match command {
                 ID_SIMPLE_BACKGROUND => settings.set_simple_background(!simple_background)?,
-                ID_LAYOUT_DEFAULT => settings.set_layout(Layout::Default)?,
-                ID_LAYOUT_SIMPLE => settings.set_layout(Layout::Simple)?,
                 ID_UNIT_CELSIUS => settings.set_temperature_unit(TemperatureUnit::Celsius)?,
                 _ => settings.set_temperature_unit(TemperatureUnit::Fahrenheit)?,
             }
@@ -730,6 +764,29 @@ unsafe extern "system" fn window_proc(
             DefWindowProcW(window, message, wparam, lparam)
         },
         _ => unsafe { DefWindowProcW(window, message, wparam, lparam) },
+    }
+}
+
+/// 把子菜单命令号换回它对应的选项；命令号不在这一组里时返回 `None`。
+fn choice<T: Copy>(command: u32, first: u32, choices: &[T]) -> Option<T> {
+    choices.get(command.checked_sub(first)? as usize).copied()
+}
+
+fn layout_label(layout: Layout) -> String {
+    match layout {
+        Layout::Default => tr("tray.menu.display_default"),
+        Layout::Simple => tr("tray.menu.display_simple"),
+        Layout::CpuGpu => tr("tray.menu.display_cpu_gpu"),
+        Layout::Temperatures => tr("tray.menu.display_temperatures"),
+        Layout::Clock => tr("tray.menu.display_clock"),
+    }
+}
+
+fn rotation_interval_label(seconds: u32) -> String {
+    if seconds.is_multiple_of(60) {
+        t!("tray.menu.rotation_minutes", count = seconds / 60)
+    } else {
+        t!("tray.menu.rotation_seconds", count = seconds)
     }
 }
 

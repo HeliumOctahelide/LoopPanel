@@ -29,7 +29,7 @@ The repository is licensed under the MIT License. For the licenses of third-part
 - A 480×270 16:9 central image area, and a freely editable 480×480 SVG dashboard layer;
 - CPU, RAM, NVIDIA or AMD Radeon GPU, video memory, network, and disk information;
 - WASAPI loopback capture, 1024-point FFT, and a 16-band real-time audio spectrum;
-- A tray menu to switch the display layout (the default dashboard, or a simple large-digit layout showing only CPU temperature and load) and the temperature unit (Celsius / Fahrenheit);
+- A tray menu to switch the display layout (the default dashboard, or four built-in large-text layouts: Simple, CPU + GPU, Temperatures and Clock) and the temperature unit (Celsius / Fahrenheit), and to rotate through the layouts automatically at a chosen interval;
 - Tray text and messages that follow the Windows display language: Simplified Chinese, English, Korean;
 - A single-instance display lock and a check for conflicts with the official software.
 
@@ -92,8 +92,9 @@ While running, right-click the tray icon to:
 
 - view the display and CPU temperature status;
 - open `looppanel.toml`, and apply edits immediately with "Reload settings";
-- switch between the default and simple layouts under "Display", and between Celsius and Fahrenheit under "Unit"; the choice applies immediately and is remembered;
-- turn the full-screen background image / GIF of the simple layout on or off with "Background in simple layout" (the background is dimmed, and the digits have an outline and a shadow);
+- switch the layout under "Display", and between Celsius and Fahrenheit under "Unit"; the choice applies immediately and is remembered. Besides the default dashboard there are four large-text layouts: Simple (CPU temperature + load), CPU + GPU (temperature + load of each), Temperatures (CPU and GPU temperature) and Clock (the time, with CPU / GPU temperature below);
+- tick "Rotate automatically" to cycle through all layouts in menu order; "Rotation interval" offers 10 s / 30 s (default) / 1 min / 5 min. Picking a layout under "Display" while rotating jumps to it and the rotation continues from there;
+- turn the full-screen background image / GIF of the large-text layouts on or off with "Background in large-text layouts" (the background is dimmed, and the digits have an outline and a shadow);
 - enable or disable "start at login";
 - retry after a connection failure;
 - exit and release the USB interface.
