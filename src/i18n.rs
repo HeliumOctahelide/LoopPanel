@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(
             substitute(
                 korean.message("tray.temperature.value"),
-                &[("celsius", "54")]
+                &[("temperature", "54°C")]
             ),
             "CPU 온도: 54°C"
         );

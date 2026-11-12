@@ -9,6 +9,7 @@ pub mod monitor;
 pub mod process;
 pub mod protocol;
 pub mod render;
+pub mod settings;
 pub mod startup;
 pub mod temperature;
 pub mod temperature_service;

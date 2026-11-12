@@ -11,6 +11,7 @@ use crate::{
     i18n::t,
     monitor::Snapshot,
     protocol::{HEIGHT, WIDTH},
+    settings::TemperatureUnit,
 };
 
 const AUDIO_LEFT: i32 = 10;
@@ -23,11 +24,16 @@ const AUDIO_BLOCK_COUNT: usize = 8;
 const AUDIO_INACTIVE: Rgba<u8> = Rgba([231, 224, 238, 255]);
 const AUDIO_ACTIVE: Rgba<u8> = Rgba([138, 88, 191, 255]);
 
+/// 内置的“单纯”布局：只显示 CPU 温度和占用率，字号按 480×480 铺满。
+const SIMPLE_TEMPLATE: &str = include_str!("../simple.svg.jinja");
+const SIMPLE_TEMPLATE_NAME: &str = "simple.svg.jinja";
+
 pub struct Renderer {
     environment: Environment<'static>,
     svg_options: usvg::Options<'static>,
     overlay: RgbaImage,
     audio_enabled: bool,
+    temperature_unit: TemperatureUnit,
 }
 
 impl Renderer {
@@ -38,18 +44,37 @@ impl Renderer {
                 path = template_path.display()
             )
         })?;
+        Self::from_template(
+            template,
+            &template_path.display().to_string(),
+            template_path.parent(),
+            font_path,
+        )
+    }
+
+    /// 使用程序内置的单纯布局，不读取模板文件。
+    pub fn simple(font_path: &Path) -> Result<Self> {
+        Self::from_template(
+            SIMPLE_TEMPLATE.to_owned(),
+            SIMPLE_TEMPLATE_NAME,
+            None,
+            font_path,
+        )
+    }
+
+    fn from_template(
+        template: String,
+        template_name: &str,
+        resources_directory: Option<&Path>,
+        font_path: &Path,
+    ) -> Result<Self> {
         let audio_enabled = template.contains(r#"id="audio-spectrum""#);
         let mut environment = Environment::new();
         environment.set_auto_escape_callback(|_| AutoEscape::Html);
         environment.set_undefined_behavior(UndefinedBehavior::Strict);
         environment
             .add_template_owned("dashboard.svg".to_owned(), template)
-            .with_context(|| {
-                t!(
-                    "render.template_parse_failed",
-                    path = template_path.display()
-                )
-            })?;
+            .with_context(|| t!("render.template_parse_failed", path = template_name))?;
 
         let font_data = fs::read(font_path)
             .with_context(|| t!("render.font_read_failed", path = font_path.display()))?;
@@ -69,14 +94,20 @@ impl Renderer {
             family
         };
         svg_options.font_family = family;
-        svg_options.resources_dir = template_path.parent().map(Path::to_path_buf);
+        svg_options.resources_dir = resources_directory.map(Path::to_path_buf);
 
         Ok(Self {
             environment,
             svg_options,
             overlay: RgbaImage::new(WIDTH as u32, HEIGHT as u32),
             audio_enabled,
+            temperature_unit: TemperatureUnit::default(),
         })
+    }
+
+    /// 之后的 `update` 按这个单位填充模板里的 `temperature` 字段。
+    pub fn set_temperature_unit(&mut self, unit: TemperatureUnit) {
+        self.temperature_unit = unit;
     }
 
     pub fn audio_enabled(&self) -> bool {
@@ -116,7 +147,9 @@ impl Renderer {
 
     fn render_svg(&self, config: &Config, snapshot: &Snapshot) -> Result<String> {
         let custom_line_count = config.custom_lines.len().min(2);
+        let unit = self.temperature_unit;
         let context = DashboardContext {
+            temperature_unit: unit.symbol(),
             title: &config.title,
             time: local_time(),
             show_clock: config.show_clock,
@@ -124,6 +157,7 @@ impl Renderer {
             cpu: CpuView {
                 load_percent: snapshot.cpu_percent,
                 temperature_c: snapshot.cpu_temperature,
+                temperature: snapshot.cpu_temperature.map(|value| unit.convert(value)),
                 performance_frequency_ghz: snapshot.cpu_p_mhz.map(mhz_to_ghz),
                 efficiency_frequency_ghz: snapshot.cpu_e_mhz.map(mhz_to_ghz),
                 performance_cores: core_views(&snapshot.cpu_p_core_loads, 8),
@@ -138,6 +172,7 @@ impl Renderer {
             gpu: GpuView {
                 load_percent: snapshot.gpu_percent,
                 temperature_c: snapshot.gpu_temperature,
+                temperature: snapshot.gpu_temperature.map(|value| unit.convert(value)),
                 power_w: snapshot.gpu_power_w,
                 power_limit_w: snapshot.gpu_power_limit_w,
                 memory: gpu_memory(snapshot),
@@ -167,6 +202,7 @@ struct DashboardContext<'a> {
     time: String,
     show_clock: bool,
     show_sensors: bool,
+    temperature_unit: &'static str,
     cpu: CpuView,
     memory: MemoryView,
     gpu: GpuView,
@@ -178,6 +214,7 @@ struct DashboardContext<'a> {
 struct CpuView {
     load_percent: Option<f32>,
     temperature_c: Option<u32>,
+    temperature: Option<i32>,
     performance_frequency_ghz: Option<f32>,
     efficiency_frequency_ghz: Option<f32>,
     performance_cores: Vec<CoreView>,
@@ -201,6 +238,7 @@ struct MemoryView {
 struct GpuView {
     load_percent: Option<u32>,
     temperature_c: Option<u32>,
+    temperature: Option<i32>,
     power_w: Option<f32>,
     power_limit_w: Option<f32>,
     memory: Option<GpuMemoryView>,
@@ -331,7 +369,7 @@ mod tests {
     use super::{
         AUDIO_ACTIVE, AUDIO_INACTIVE, Renderer, bar_width, core_views, draw_audio_spectrum,
     };
-    use crate::{config::Config, monitor::Snapshot};
+    use crate::{config::Config, monitor::Snapshot, settings::TemperatureUnit};
 
     #[test]
     fn renders_default_dashboard_around_a_transparent_image_slot() {
@@ -361,6 +399,43 @@ mod tests {
         let base = RgbaImage::from_pixel(480, 480, Rgba([11, 22, 33, 255]));
         let composed = renderer.compose(base, &[]);
         assert_eq!(composed.get_pixel(240, 240).0, [11, 22, 33, 255]);
+    }
+
+    #[test]
+    fn simple_layout_shows_only_cpu_temperature_and_load() {
+        let mut renderer = Renderer::simple(Path::new(r"C:\Windows\Fonts\segoeui.ttf")).unwrap();
+        assert!(!renderer.audio_enabled());
+        let config = Config::default();
+        let snapshot = Snapshot {
+            cpu_percent: Some(12.4),
+            cpu_temperature: Some(47),
+            ..Snapshot::default()
+        };
+        let svg = renderer.render_svg(&config, &snapshot).unwrap();
+        assert!(svg.contains(">47°C<"));
+        assert!(svg.contains(">12%<"));
+        assert!(!svg.contains("GPU"));
+
+        // 华氏只换显示值；颜色阈值仍按摄氏判断（47°C 属于最低一档）。
+        renderer.set_temperature_unit(TemperatureUnit::Fahrenheit);
+        let fahrenheit = renderer.render_svg(&config, &snapshot).unwrap();
+        assert!(fahrenheit.contains(">117°F<"));
+        assert!(fahrenheit.contains("#3ddc97"));
+        renderer.set_temperature_unit(TemperatureUnit::Celsius);
+
+        // 背景透过半透明底色显示出来，但被压暗以保证文字可读。
+        renderer.update(&config, &snapshot).unwrap();
+        let image = renderer.compose(
+            RgbaImage::from_pixel(480, 480, Rgba([255, 0, 255, 255])),
+            &[],
+        );
+        let Rgba([red, green, blue, _]) = *image.get_pixel(2, 2);
+        assert!((60..160).contains(&red) && (60..160).contains(&blue));
+        assert!(green < 30);
+
+        let missing = renderer.render_svg(&config, &Snapshot::default()).unwrap();
+        // 两个读数各出现两次：正文和它的投影。
+        assert_eq!(missing.matches(">--<").count(), 4);
     }
 
     #[test]

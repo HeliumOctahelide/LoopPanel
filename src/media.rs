@@ -21,13 +21,22 @@ pub struct MediaFrame {
     pub delay: Duration,
 }
 
+/// 背景素材在 480×480 画面中的摆放方式。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Placement {
+    /// 默认仪表盘：放进中央 480×270 区域，上下留给仪表。
+    CenterBand,
+    /// 单纯布局：铺满整个画面。
+    FullScreen,
+}
+
 pub enum Background {
     Procedural,
     Frames(Vec<MediaFrame>),
 }
 
 impl Background {
-    pub fn load(path: Option<&Path>) -> Result<Self> {
+    pub fn load(path: Option<&Path>, placement: Placement) -> Result<Self> {
         let Some(path) = path else {
             return Ok(Self::Procedural);
         };
@@ -59,7 +68,7 @@ impl Background {
                 let (numerator, denominator) = frame.delay().numer_denom_ms();
                 let millis = (numerator as f64 / denominator as f64).max(10.0);
                 frames.push(MediaFrame {
-                    image: background_frame(frame.into_buffer()),
+                    image: background_frame(frame.into_buffer(), placement),
                     delay: Duration::from_secs_f64(millis / 1_000.0),
                 });
             }
@@ -75,9 +84,17 @@ impl Background {
             .with_context(|| t!("media.image_decode_failed", path = path.display()))?
             .to_rgba8();
         Ok(Self::Frames(vec![MediaFrame {
-            image: background_frame(image),
+            image: background_frame(image, placement),
             delay: Duration::from_secs(1),
         }]))
+    }
+
+    /// 单色静态背景。
+    pub fn solid(color: [u8; 4]) -> Self {
+        Self::Frames(vec![MediaFrame {
+            image: RgbaImage::from_pixel(WIDTH as u32, HEIGHT as u32, Rgba(color)),
+            delay: Duration::from_secs(1),
+        }])
     }
 
     pub fn frame(&self, index: usize) -> RgbaImage {
@@ -151,7 +168,10 @@ fn cover(image: RgbaImage) -> RgbaImage {
     cover_to(image, WIDTH as u32, HEIGHT as u32)
 }
 
-fn background_frame(image: RgbaImage) -> RgbaImage {
+fn background_frame(image: RgbaImage, placement: Placement) -> RgbaImage {
+    if placement == Placement::FullScreen {
+        return cover(image);
+    }
     let content = cover_to(image, WIDTH as u32, BACKGROUND_HEIGHT);
     let mut canvas = RgbaImage::from_pixel(WIDTH as u32, HEIGHT as u32, Rgba([250, 250, 248, 255]));
     imageops::replace(&mut canvas, &content, 0, BACKGROUND_TOP);
@@ -199,7 +219,7 @@ mod tests {
         codecs::gif::{GifEncoder, Repeat},
     };
 
-    use super::{Background, load_first};
+    use super::{Background, Placement, load_first};
 
     #[test]
     fn classifies_procedural_and_frame_backgrounds() {
@@ -208,6 +228,7 @@ mod tests {
             delay: Duration::from_secs(1),
         };
         assert!(Background::Procedural.is_animated());
+        assert!(!Background::solid([14, 17, 20, 255]).is_animated());
         assert!(!Background::Frames(vec![frame()]).is_animated());
         assert!(Background::Frames(vec![frame(), frame()]).is_animated());
     }
@@ -234,7 +255,7 @@ mod tests {
         assert_eq!(first.dimensions(), (480, 480));
         assert_eq!(first.get_pixel(0, 0).0, [255, 0, 0, 255]);
 
-        let background = Background::load(Some(&path)).unwrap();
+        let background = Background::load(Some(&path), Placement::CenterBand).unwrap();
         match background {
             Background::Frames(frames) => {
                 assert_eq!(frames.len(), 2);
@@ -244,6 +265,16 @@ mod tests {
                 assert_eq!(frames[0].image.get_pixel(0, 105).0, [255, 0, 0, 255]);
                 assert_eq!(frames[0].image.get_pixel(479, 374).0, [255, 0, 0, 255]);
                 assert_eq!(frames[0].image.get_pixel(479, 375).0, [250, 250, 248, 255]);
+            }
+            Background::Procedural => panic!("expected GIF frames"),
+        }
+
+        // 铺满画面时不留上下的仪表区域。
+        match Background::load(Some(&path), Placement::FullScreen).unwrap() {
+            Background::Frames(frames) => {
+                assert_eq!(frames.len(), 2);
+                assert_eq!(frames[0].image.get_pixel(0, 0).0, [255, 0, 0, 255]);
+                assert_eq!(frames[1].image.get_pixel(479, 479).0, [0, 255, 0, 255]);
             }
             Background::Procedural => panic!("expected GIF frames"),
         }

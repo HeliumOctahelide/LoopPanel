@@ -37,10 +37,10 @@
 
   <g dominant-baseline="middle" text-anchor="middle" font-family="sans-serif">
     <text x="120" y="15" font-size="15" letter-spacing="1.1" fill="#2477d4">CPU</text>
-    <text x="120" y="46" font-size="36" fill="{% if cpu.temperature_c is none %}#7f8790{% elif cpu.temperature_c >= 85 %}#d74242{% elif cpu.temperature_c >= 71 %}#e46d32{% elif cpu.temperature_c >= 56 %}#d29a26{% else %}#25a779{% endif %}">{% if cpu.temperature_c is none %}--{% else %}{{ "%d"|format(cpu.temperature_c) }}°{% endif %}</text>
+    <text x="120" y="46" font-size="{% if cpu.temperature is not none and cpu.temperature >= 100 %}30{% else %}36{% endif %}" fill="{% if cpu.temperature_c is none %}#7f8790{% elif cpu.temperature_c >= 85 %}#d74242{% elif cpu.temperature_c >= 71 %}#e46d32{% elif cpu.temperature_c >= 56 %}#d29a26{% else %}#25a779{% endif %}">{% if cpu.temperature_c is none %}--{% else %}{{ "%d"|format(cpu.temperature) }}°{% endif %}</text>
     <text x="120" y="75" font-size="13" letter-spacing="0.7" fill="#59636c">TEMP</text>
     <text x="360" y="15" font-size="15" letter-spacing="1.1" fill="#1f9d66">GPU</text>
-    <text x="360" y="46" font-size="36" fill="{% if gpu.temperature_c is none %}#7f8790{% elif gpu.temperature_c >= 85 %}#d74242{% elif gpu.temperature_c >= 71 %}#e46d32{% elif gpu.temperature_c >= 56 %}#d29a26{% else %}#25a779{% endif %}">{% if gpu.temperature_c is none %}--{% else %}{{ "%d"|format(gpu.temperature_c) }}°{% endif %}</text>
+    <text x="360" y="46" font-size="{% if gpu.temperature is not none and gpu.temperature >= 100 %}30{% else %}36{% endif %}" fill="{% if gpu.temperature_c is none %}#7f8790{% elif gpu.temperature_c >= 85 %}#d74242{% elif gpu.temperature_c >= 71 %}#e46d32{% elif gpu.temperature_c >= 56 %}#d29a26{% else %}#25a779{% endif %}">{% if gpu.temperature_c is none %}--{% else %}{{ "%d"|format(gpu.temperature) }}°{% endif %}</text>
     <text x="360" y="75" font-size="13" letter-spacing="0.7" fill="#59636c">TEMP</text>
   </g>
   </g>
