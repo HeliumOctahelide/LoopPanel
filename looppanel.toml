@@ -3,8 +3,8 @@ background = "samples/aurora-circuit.jpg"
 
 # 背景、模板和相对字体路径均以本配置文件所在目录为基准。
 template = "dashboard.svg.jinja"
-# 默认模板按 Agency FB 调整；也可换成其他本地 TTF/TTC 字体。
-font = 'C:\Windows\Fonts\AGENCYB.TTF'
+# 默认使用 Windows 10/11 自带的 Bahnschrift；也可换成其他本地 TTF/TTC 字体。
+font = 'C:\Windows\Fonts\bahnschrift.ttf'
 title = "LoopPanel"
 custom_lines = []
 
