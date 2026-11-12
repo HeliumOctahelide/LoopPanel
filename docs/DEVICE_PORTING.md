@@ -1,115 +1,117 @@
-# 设备迁移指南
+# Device Porting Guide
 
-本文面向为 LoopPanel 增加其他屏幕支持的开发者和 Agent。当前 transport 是经过实机验证的 TM-360 配置，不是 MS9132 通则。
+**English** | [简体中文](DEVICE_PORTING.zh-CN.md)
 
-## 首要原则
+This guide is for developers and agents adding another display. The current transport is a hardware-validated TM-360 configuration, not a universal MS9132 protocol.
 
-不要仅凭品牌、外观、USB VID/PID 或控制器型号发送当前初始化报告。已知 `345F:9132` 同时出现在不同分辨率和不同 OEM 产品中；同一 MS9132 控制器族也存在不同帧头高位、ZLP、trigger 和保活策略。
+## First principle
 
-新设备在没有官方通信捕获前只能做只读描述符调查。任何实机写屏、重枚举、驱动安装或 USBPcap 安装都需要设备所有者明确授权。
+Do not send the current initialization reports based only on brand, appearance, USB VID/PID, or controller model. The known `345F:9132` identifier occurs on different resolutions and OEM products. Members of the MS9132 family also differ in frame-header high bits, ZLP, trigger, and keep-alive behavior.
 
-## 阶段一：只读识别
+Before official traffic captures are available, investigate a new device only through read-only descriptors. Hardware display writes, re-enumeration, driver installation, or USBPcap installation require the device owner's explicit authorization.
 
-记录以下内容：
+## Stage 1: Read-only identification
 
-1. USB VID/PID、bcdDevice、序列号、Manufacturer/Product 字符串；
-2. 配置、接口、端点描述符；
-3. HID usage page、report 长度和 interface number；
-4. bulk OUT endpoint、MPS、Windows 绑定驱动；
-5. 官方程序显示的型号/固件字符串；
-6. 面板物理分辨率、方向和官方可选刷新模式。
+Record:
 
-不要把 VID/PID 作为唯一匹配条件。至少应同时匹配接口拓扑和一个产品/固件指纹；无法区分时应拒绝写屏。
+1. USB VID/PID, bcdDevice, serial number, Manufacturer/Product strings.
+2. Configuration, interface, and endpoint descriptors.
+3. HID usage page, report length, and interface number.
+4. Bulk OUT endpoint, MPS, and the bound Windows driver.
+5. Model/firmware strings shown by the official application.
+6. Physical resolution, orientation, and official refresh modes.
 
-## 阶段二：捕获官方协议
+VID/PID alone is insufficient. Match at least the interface topology and a product/firmware fingerprint. Reject display writes when the configuration cannot be distinguished.
 
-使用 USBPcap/Wireshark 捕获两类会话：
+## Stage 2: Capture the official protocol
 
-1. 从设备空闲到官方程序启动、首帧显示的完整初始化；
-2. 连续动态显示 10–30 秒，以及官方程序正常退出。
+Use USBPcap/Wireshark to capture:
 
-保留原始 pcapng，不只保留整理后的十六进制。分别提取：
+1. From idle hardware through official application startup and its first displayed frame.
+2. A continuous 10–30 second dynamic display session and normal application exit.
 
-- HID SetFeature/GetFeature 的顺序、8 字节 payload、响应和毫秒节拍；
-- 视频接口 claim 前后的行为；
-- 第一帧前后是否预载、enable 或 trigger；
-- 帧头、像素负载、帧尾和总长度；
-- bulk write 分块、短包、ZLP 数量；
-- 周期控制报告、完整帧重发和停止后的固件行为。
+Keep the original pcapng, not just extracted hexadecimal. Identify:
 
-Windows HIDAPI/HidD 缓冲区对无编号 report 仍以 `00` report ID 开头；USB 控制传输的数据阶段可能只有后续 8 字节。不要把两种观察方式混为一谈。
+- HID SetFeature/GetFeature order, 8-byte payloads, responses, and timing.
+- Behavior before and after claiming the video interface.
+- Preload, enable, or trigger operations around the first frame.
+- Frame header, pixel payload, trailer, and total size.
+- Bulk chunking, short packets, ZLP count, and trigger behavior.
+- Periodic control reports, full-frame resends, and firmware behavior after stopping.
 
-## 阶段三：确定像素格式
+On Windows, HIDAPI/HidD buffers for an unnumbered report still start with report ID `00`. The USB control data stage may contain only the following eight bytes. Do not confuse the two representations.
 
-用纯色和小型定位图验证：
+## Stage 3: Determine the pixel format
 
-- RGB/BGR 通道顺序；
-- RGB565、RGB888、YUYV/UYVY 等像素格式；
-- full/limited range；
-- 横纵方向、旋转和镜像；
-- 行对齐、stride 和是否需要双像素共享色度。
+Use solid colors and small positioning patterns to verify:
 
-当前 TM-360 路径是 limited-range UYVY422，字节序 `U,Y0,V,Y1`。DS339 早期 BGR888 推断已经被后续实机测试推翻，这正说明必须以真实画面和抓包共同验证。
+- RGB/BGR channel order.
+- RGB565, RGB888, YUYV/UYVY, or other packing.
+- Full versus limited range.
+- Orientation, rotation, and mirroring.
+- Row alignment, stride, and whether two pixels share chroma.
 
-## 阶段四：代码迁移
+The current TM-360 path is limited-range UYVY422, in `U,Y0,V,Y1` order. Early DS339 assumptions about BGR888 were overturned by hardware tests; use both the observed display and traffic captures as evidence.
 
-新增第二种设备之前，不需要预先抽象整个项目。获得第二份完整证据后，再从以下位置提取最小设备配置：
+## Stage 4: Adapt the code
 
-| 当前文件 | 需要迁移的内容 |
+Before a second device is supported, there is no need to abstract the whole project. Once a second complete evidence set exists, extract the smallest device configuration from these locations:
+
+| File | Device-specific details |
 |---|---|
-| `protocol.rs` | 分辨率、VIC、像素编码、帧头、帧尾 |
-| `transport.rs` | VID/PID、接口/端点、初始化报告、节拍、预载、分块、ZLP/trigger |
-| `display.rs` | 最低重发间隔和设备保活策略 |
-| `media.rs` / `render.rs` | 画布尺寸和默认模板几何 |
-| 设备匹配测试 | 明确验证命中的设备配置及拒绝原因 |
+| `protocol.rs` | Resolution, VIC, pixel encoding, frame header/trailer |
+| `transport.rs` | VID/PID, interfaces/endpoints, startup reports/timing, preload, chunks, ZLP/trigger |
+| `display.rs` | Minimum resend interval and keep-alive behavior |
+| `media.rs` / `render.rs` | Canvas size and default template geometry |
+| Matching tests | Accepted profiles and explicit rejection reasons |
 
-建议的最小演进形态是：
+A minimal future shape is:
 
 ```text
 DeviceProfile
-  matcher              描述符与接口拓扑匹配
-  width / height / vic 显示模式
-  startup              捕获验证过的控制报告和节拍
-  pixel_format         像素编码策略
-  frame_format         帧头、帧尾和尺寸字段
-  bulk_policy          endpoint、chunk、ZLP、trigger
-  keepalive            缓存帧/控制报告及间隔
+  matcher              descriptors and interface topology
+  width / height / vic display mode
+  startup              capture-validated reports and timing
+  pixel_format         pixel conversion
+  frame_format         header, trailer, size fields
+  bulk_policy          endpoint, chunk, ZLP/trigger
+  keepalive            cached frame/control reports and intervals
 ```
 
-纯数据差异使用结构体；只有像素转换或传输行为真正不同才引入枚举或 trait。不要为了潜在设备建立插件系统、动态配置协议字节或自动试探多个初始化序列。
+Use configuration data for data-only differences. Add an enum or trait only for a real behavior difference in conversion or transport. Do not create a plugin system, configurable protocol byte sequences, or speculative initialization probes for hypothetical devices.
 
-设备选择必须 fail closed：零匹配或多个匹配都不写屏。配置文件不能覆盖描述符匹配来强制发送未知命令。
+Selection must fail closed: zero matches or multiple matches means no writes. A configuration file must not bypass descriptor matching to force commands onto an unknown device.
 
-## 阶段五：测试
+## Stage 5: Tests
 
-离线测试至少覆盖：
+Offline coverage must include:
 
-- 捕获中的模式报告字节完全一致；
-- 已知 RGB 色块编码；
-- 帧包总长度、头尾和分辨率字段；
-- 分块边界、ZLP/trigger 次数；
-- matcher 不会误认现有其他配置；
-- 离线协议、渲染和基准测试不进入 transport。
+- Exact agreement with captured mode-report bytes.
+- Encoding of known RGB colors.
+- Packet size, header/trailer, and resolution fields.
+- Chunk boundaries and ZLP/trigger counts.
+- Rejection of known other configurations by the matcher.
+- Protocol, rendering, and benchmark tests that do not enter the transport.
 
-受控实机验收按顺序进行：
+During an authorized hardware window, test in this order:
 
-1. 静态测试卡：分辨率、方向、四角和 RGB 色彩；
-2. 每秒变化的时钟：确认持续帧；
-3. 低帧率静态重发：确认保活；
-4. 动画：确认分块、吞吐和稳定性；
-5. 正常退出：记录回标志、黑屏或保留最后帧的时间；
-6. 重新启动官方程序：确认设备可恢复。
+1. A static card: resolution, orientation, corners, and RGB colors.
+2. A clock changing once per second: continuous display.
+3. Low-rate static resends: keep-alive behavior.
+4. Animation: chunking, throughput, and stability.
+5. Normal exit: time to logo, black screen, or retention of the last frame.
+6. Restart the official application: confirm device recovery.
 
-测试只使用已经捕获并解释的运行时命令；不要加入固件、EEPROM、描述符修改或 USB reset。
+Use only captured and explained runtime commands. Do not introduce firmware, EEPROM, descriptor writes, or USB reset paths.
 
-## 合入标准
+## Acceptance criteria
 
-一个新设备配置只有同时满足以下条件才可标为“支持”：
+A new configuration may be called supported only when all of these hold:
 
-- 有可复核的描述符和官方通信证据；
-- 离线协议测试通过；
-- 至少一台真实设备完成颜色、方向、动画、保活与退出恢复测试；
-- README 精确写明产品、硬件修订和识别指纹；
-- 不降低现有 TM-360 matcher 的精确性。
+- Reproducible descriptors and official communication evidence are available.
+- Offline protocol tests pass.
+- At least one physical unit passes color, orientation, animation, keep-alive, and exit/recovery tests.
+- The README identifies the product, hardware revision, and matching fingerprint precisely.
+- The existing TM-360 matcher remains equally strict.
 
-没有真实设备验收的实现只能标记为实验性，并且默认不参与自动匹配。
+An implementation without hardware acceptance is experimental and excluded from automatic matching by default.

@@ -1,0 +1,127 @@
+# LoopPanel 模板指南
+
+[English](TEMPLATES.md) | **简体中文**
+
+LoopPanel 的模板是一个 MiniJinja 文本文件，渲染结果必须是有效的 SVG。默认画布是 480×480；当前设备传输层也固定为这一尺寸。
+
+## 基本规则
+
+- 模板文件默认名为 `dashboard.svg.jinja`；
+- 根节点应声明 `width="480" height="480" viewBox="0 0 480 480"`；
+- 未定义变量采用严格错误模式；
+- 动态文本按 XML/HTML 规则自动转义；不要对用户文本使用 `safe`；
+- 可选数值是 `none`，应先判断再格式化；零是有效值，不要用普通真假判断代替 `is not none`；
+- 程序只加载配置指定的一份字体，并把 SVG 的 `sans-serif` 映射到该字体；
+- 相对的 SVG 资源路径以模板目录为基准。
+
+## 完整上下文
+
+### 顶层
+
+| 表达式 | 类型 | 含义 |
+|---|---|---|
+| `title` | string | 配置中的标题 |
+| `time` | string | 本地时间，格式 `HH:MM:SS` |
+| `show_clock` | bool | 配置中的时钟开关 |
+| `show_sensors` | bool | 配置中的传感器开关 |
+| `temperature_unit` | string | 托盘“单位”菜单的选择：`C` 或 `F` |
+| `custom_lines` | list[string] | 最多两项 |
+
+### CPU
+
+| 表达式 | 类型 |
+|---|---|
+| `cpu.load_percent` | float，0–100 或 `none`；Windows Processor Utility，总体口径与任务管理器一致 |
+| `cpu.temperature_c` | integer 或 `none`；摄氏度，Intel 为 Package 温度，AMD 为 Tctl/Tdie |
+| `cpu.temperature` | integer 或 `none`；按 `temperature_unit` 换算后的显示值 |
+| `cpu.performance_frequency_ghz` | float 或 `none` |
+| `cpu.efficiency_frequency_ghz` | float 或 `none` |
+| `cpu.performance_cores` | list of `{ opacity }`，最多 8 项 |
+| `cpu.efficiency_cores` | list of `{ opacity }`，最多 16 项 |
+
+核心列表中的 `opacity` 已映射到 0.18–1.0，可直接用于 SVG 的 `fill-opacity`；其来源是逐核忙碌时间，和总体 `cpu.load_percent` 的 Utility 口径不同。
+
+### 内存
+
+| 表达式 | 类型 |
+|---|---|
+| `memory.used_gib` | float |
+| `memory.total_gib` | float |
+| `memory.used_percent` | float，0–100 |
+| `memory.bar_width` | float，0–230 |
+
+### GPU
+
+程序先尝试 NVIDIA NVML，不可用时再尝试 AMD ADL，最后退回 Windows 通用接口（PDH 与 D3DKMT，例如 Intel 显卡）；都不可用时，所有字段为 `none`。通用接口只提供 `gpu.load_percent`、`gpu.temperature_c` 和 `gpu.memory`，其余字段为 `none`；专用显存不足 512 MiB 的核显按共享显存统计。AMD 下 `gpu.power_limit_w` 与 `gpu.performance_state` 始终为 `none`，`gpu.power_w` 取整卡功耗（驱动不提供时退回芯片功耗），`gpu.temperature_c` 取边缘温度（不提供时退回热点温度）。
+
+| 表达式 | 类型 |
+|---|---|
+| `gpu.load_percent` | integer 或 `none` |
+| `gpu.temperature_c` | integer 或 `none`；摄氏度 |
+| `gpu.temperature` | integer 或 `none`；按 `temperature_unit` 换算后的显示值 |
+| `gpu.power_w` | float 或 `none` |
+| `gpu.power_limit_w` | float 或 `none` |
+| `gpu.memory` | object 或 `none` |
+| `gpu.memory.used_gib` | float |
+| `gpu.memory.total_gib` | float |
+| `gpu.memory.bar_width` | float，0–230 |
+| `gpu.graphics_clock_mhz` | integer 或 `none` |
+| `gpu.memory_clock_mhz` | integer 或 `none` |
+| `gpu.performance_state` | integer 或 `none` |
+| `gpu.fan_percent` | integer 或 `none` |
+
+### I/O
+
+以下字段都是 float 或 `none`，单位为 MiB/s：
+
+- `io.network_down_mib_s`
+- `io.network_up_mib_s`
+- `io.disk_read_mib_s`
+- `io.disk_write_mib_s`
+
+显示温度时使用 `temperature` 并配合 `temperature_unit`；颜色阈值等判断继续使用始终为摄氏度的 `temperature_c`。
+
+托盘“显示”菜单选择默认以外的布局时，程序改用内置的大字模板，不读取配置里的 `template`，也不绘制音频频谱：`simple.svg.jinja`（CPU 温度 + 占用率）、`cpu_gpu.svg.jinja`（CPU 与 GPU 各自的温度 + 占用率）、`temperatures.svg.jinja`（CPU 温度 + GPU 温度）、`clock.svg.jinja`（时间，下方是 CPU / GPU 温度）。这些布局始终显示读数和时间，不受 `show_clock` / `show_sensors` 影响；配置的背景图 / GIF 会铺满整个画面并被压暗，可用托盘菜单“大字布局显示背景”关闭。“自动轮换”会按菜单顺序在所有布局之间切换，切到默认布局时才读取 `template`。布局切换与重新载入设置都会先完成加载、渲染和帧编码；失败时报告原因并继续显示当前有效内容。温度单位切换只更新已接受的渲染器，不读取磁盘模板，也不重置 GIF。成功重载后会立即重新采样，不沿用旧采样期限。
+
+## 常用语法
+
+```jinja
+{{ "%.1f"|format(memory.used_gib) }}
+
+{% if cpu.temperature_c is not none %}
+  {{ "%d"|format(cpu.temperature_c) }}°C
+{% endif %}
+
+{% for core in cpu.performance_cores %}
+  <rect x="{{ 20 + loop.index0 * 24 }}" y="80" width="18" height="12"
+        fill="#16bde8" fill-opacity="{{ core.opacity }}"/>
+{% endfor %}
+```
+
+温度颜色可以直接在模板里表达：
+
+```jinja
+fill="{% if cpu.temperature_c is none %}#7f8790{% elif cpu.temperature_c >= 85 %}#d74242{% elif cpu.temperature_c >= 71 %}#e46d32{% elif cpu.temperature_c >= 56 %}#d29a26{% else %}#25a779{% endif %}"
+```
+
+## 16 段音频频谱
+
+在模板中加入精确标记：
+
+```xml
+<g id="audio-spectrum"/>
+```
+
+该标记会启用 WASAPI 回环采集。为了避免每 200 ms 重新解析和栅格化整份 SVG，16 段频谱由 Rust 在最终合成阶段直接绘制；目前位置、方格大小和颜色定义在 `src/render.rs` 的 `AUDIO_*` 常量中。删除标记后，不会打开音频端点，也不会产生频谱刷新。
+
+频谱表示默认播放端点的实时频率能量，而不是音量峰值。实现使用 48 kHz 等实际混音格式、1024 点 Hann 窗 FFT、16 个保证非空的对数频段，以及独立的上升/衰减平滑。
+
+## 更新节奏
+
+- 传感器按 `sensor_interval_ms` 采样；
+- SVG 仪表层最多每秒重新栅格化一次；
+- 频谱默认每 200 ms 更新并与缓存仪表层合成；
+- GIF 保留素材帧间隔，同时受 `fps` 上限约束；
+- 静态背景只在仪表或频谱变化时重绘，设备空闲时仍每秒重发缓存帧保活。
+
+修改模板后，在托盘菜单选择“重新载入设置”载入；模板有错误时会提示原因并保留当前画面。提交前运行渲染单元测试，并在已授权的设备窗口中确认文字边界、透明区域和动态频谱。

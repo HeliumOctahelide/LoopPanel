@@ -1,16 +1,16 @@
-# 随包提供三张原创样例；也可改成自己的 PNG、JPEG 或 GIF。
+# Three original samples are bundled; you can also use your own PNG, JPEG or GIF.
 background = "samples/aurora-circuit.jpg"
 
-# 背景、模板和相对字体路径均以本配置文件所在目录为基准。
+# Background, template and relative font paths are resolved against this file's directory.
 template = "dashboard.svg.jinja"
-# 默认使用 Windows 10/11 自带的 Bahnschrift；也可换成其他本地 TTF/TTC 字体。
+# Uses Bahnschrift, which ships with Windows 10/11, by default; any other local TTF/TTC font works too.
 font = 'C:\Windows\Fonts\bahnschrift.ttf'
 title = "LoopPanel"
 custom_lines = []
 
-# GIF 保留原始帧间隔；fps 是 1..30 的动画上限。
+# GIFs keep their own frame timing; fps is the animation cap, from 1 to 30.
 fps = 5
-# 硬件信息采样周期；默认 1 Hz。
+# Hardware sampling period; the default is 1 Hz.
 sensor_interval_ms = 1000
 brightness = 0.90
 show_clock = true

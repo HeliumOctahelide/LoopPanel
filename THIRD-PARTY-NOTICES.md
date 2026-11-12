@@ -1,33 +1,41 @@
-# 第三方声明
+# Third-Party Notices
 
-LoopPanel 使用以下直接 Rust 依赖；精确的传递依赖版本记录在源码包的 `Cargo.lock` 中。
+**English** | [简体中文](THIRD-PARTY-NOTICES.zh-CN.md)
 
-| 组件 | 版本 | 许可 |
+LoopPanel uses these direct Rust dependencies. Exact transitive versions are recorded in `Cargo.lock`.
+
+| Component | Version | License |
 |---|---:|---|
-| anyhow | 1.0.104 | MIT 或 Apache-2.0 |
-| image | 0.25.10 | MIT 或 Apache-2.0 |
+| anyhow | 1.0.104 | MIT or Apache-2.0 |
+| image | 0.25.10 | MIT or Apache-2.0 |
 | libloading | 0.9.0 | ISC |
 | minijinja | 2.21.0 | Apache-2.0 |
-| resvg | 0.47.0 | MIT 或 Apache-2.0 |
-| serde | 1.0.229 | MIT 或 Apache-2.0 |
-| toml | 0.9.12+spec-1.1.0 | MIT 或 Apache-2.0 |
-| toml_parser | 1.1.3+spec-1.1.0 | MIT 或 Apache-2.0 |
-| windows-sys | 0.61.2 | MIT 或 Apache-2.0 |
+| resvg | 0.47.0 | MIT or Apache-2.0 |
+| serde | 1.0.229 | MIT or Apache-2.0 |
+| toml | 0.9.12+spec-1.1.0 | MIT or Apache-2.0 |
+| toml_parser | 1.1.3+spec-1.1.0 | MIT or Apache-2.0 |
+| windows-sys | 0.61.2 | MIT or Apache-2.0 |
 
-可选 CPU 温度功能随程序嵌入 [PawnIO.Modules 0.2.10](https://github.com/namazso/PawnIO.Modules/tree/0.2.10) 的 `IntelMSR` 与 `AMDFamily17` 模块，运行时按 CPU 厂商只加载其中一个。两个模块均采用 LGPL-2.1-or-later；本源码包保留 `IntelMSR.bin`、`IntelMSR.p`、`AMDFamily17.bin`、`AMDFamily17.p` 与 `COPYING`，交付目录的 `licenses/PawnIO.Modules-0.2.10/` 还随附完整官方 tag 源码归档，其中包含 `include/pawnio.inc` 和构建任务。所用官方模块发布包为 [release_0_2_10.zip](https://github.com/namazso/PawnIO.Modules/releases/download/0.2.10/release_0_2_10.zip)，SHA-256：
+Optional CPU temperature support embeds the `IntelMSR` and `AMDFamily17` modules from [PawnIO.Modules 0.2.10](https://github.com/namazso/PawnIO.Modules/tree/0.2.10), loading one according to the CPU vendor. Both are LGPL-2.1-or-later. This source tree retains their `.bin` and `.p` files and `COPYING`. The release's `licenses/PawnIO.Modules-0.2.10/` also includes the full official tagged source archive, including `include/pawnio.inc` and build tasks.
+
+Official module package: [release_0_2_10.zip](https://github.com/namazso/PawnIO.Modules/releases/download/0.2.10/release_0_2_10.zip).
+
+SHA-256:
 
 ```text
 971c7c974c538b62ac020e0442fa99d0423417bfb496dfe9a4a43ccc0abc0e63
 ```
 
-完整对应源码取自 [0.2.10 tag 归档](https://github.com/namazso/PawnIO.Modules/archive/refs/tags/0.2.10.zip)，交付文件名为 `PawnIO.Modules-0.2.10-source.zip`，SHA-256：
+Corresponding source: [0.2.10 tag archive](https://github.com/namazso/PawnIO.Modules/archive/refs/tags/0.2.10.zip), distributed as `PawnIO.Modules-0.2.10-source.zip`.
+
+SHA-256:
 
 ```text
 afb96a3d6f562350d3cd0b0af1ca3dc5c3d53ff6dc4d28b15d23f015b2a4030d
 ```
 
-PawnIO 2.x 驱动和 `PawnIOLib.dll` 是用户另行安装的可选运行依赖，不随 LoopPanel 二进制分发。
+PawnIO 2.x and `PawnIOLib.dll` are optional runtime dependencies installed separately by the user; they are not bundled in LoopPanel releases.
 
-设备初始化时序、UYVY 公式和帧传输格式以 [Fakinvisibility/b360gt-driver](https://github.com/Fakinvisibility/b360gt-driver/tree/94ae7f2a710123b582ca3fa806d85ee1c684e287) 的 Windows USBPcap 实机捕获实现为基线。该项目采用 MIT License，Copyright (c) 2026 B360GT contributors。
+Device startup timing, UYVY conversion, and frame transport are based on the Windows USBPcap capture implementation in [Fakinvisibility/b360gt-driver](https://github.com/Fakinvisibility/b360gt-driver/tree/94ae7f2a710123b582ca3fa806d85ee1c684e287), MIT License, Copyright (c) 2026 B360GT contributors.
 
-本交付中的 `THIRD-PARTY-LICENSES.txt` 汇集了当前锁定依赖随源码发布的许可文件。
+`THIRD-PARTY-LICENSES.txt` collects license texts shipped with the locked dependencies.

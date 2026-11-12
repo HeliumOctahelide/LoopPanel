@@ -1,14 +1,16 @@
-# 管理员只读温度补验与实际发送帧率
+# Elevated Temperature and Actual Frame-Rate Validation
 
-日期：2026-11-11（香港时间）。用户明确授权管理员只读温度测试，并自行确认 UAC；禁止修改驱动和现有服务。
+**English** | [简体中文](TEMPERATURE_AND_FPS_VALIDATION.zh-CN.md)
 
-后续固定节拍优化与 30 FPS 实机验收见[动画帧率验证](ANIMATION_FRAME_PACING.md)。本文保留优化前的测量记录。
+Date: 2026-11-11, Hong Kong time. The owner explicitly authorized an elevated read-only temperature test and confirmed UAC. Drivers and the installed service were kept unchanged.
 
-## 新版 Intel 温度读取路径
+For the subsequent 30 FPS optimization, see [animation frame pacing](ANIMATION_FRAME_PACING.md). This report records the measurements before that optimization.
 
-独立程序 `looppanel-temperature-readonly-test.exe` 直接调用修复分支 `0e25fd6` 的 `CpuTemperature::open/sample`，每 500 ms 读取一次，共 10 次，同时顺序查询原有温度服务。程序不调用显示、服务管理或驱动安装逻辑。
+## New Intel temperature reader
 
-| 次数 | 新版直接读取 °C | 现有服务 °C |
+The independent `looppanel-temperature-readonly-test.exe` called `CpuTemperature::open/sample` from commit `0e25fd6`, sampling ten times at 500 ms intervals and sequentially querying the existing service. It did not call display, service-management, or driver-installation paths.
+
+| Sample | New direct reader °C | Existing service °C |
 |---:|---:|---:|
 | 0 | 47 | 47 |
 | 1 | 37 | 37 |
@@ -21,50 +23,50 @@
 | 8 | 35 | 35 |
 | 9 | 35 | 35 |
 
-结果：打开成功，10 次读取均成功，直接读取范围 34–47°C，9 次与服务一致，最大差值 1°C。两次查询顺序执行，非同时采样。程序正常关闭驱动句柄并以退出码 0 结束。
+Opening the reader and all ten samples succeeded. Direct readings ranged from 34 to 47°C; nine matched the service, with a maximum difference of 1°C. The queries were sequential, not simultaneous. The process closed its driver handle and exited with code 0.
 
-测试前后 `LoopPanelTemperature` 的进程号均为 5964，运行状态、二进制路径和启动方式均未改变。本次补齐的是本机 Intel 传感器读取路径，不是新版 Windows 服务安装、生命周期或 AMD 平台的验证。
+The existing `LoopPanelTemperature` service retained process ID 5964, state, binary path, and startup mode. This validates the Intel reading path, not service installation/lifecycle or AMD hardware.
 
-## 帧率测量方法
+## Frame-rate method
 
-- 使用主分支 `2badea5` 与修复分支 `0e25fd6` 的独立源码副本，按相同的 Release 配置构建临时计时程序。
-- 沿用生产显示循环与 USB 传输代码，仅在成功返回 `device.send_packet` 后记录单调时钟、发送耗时、准备耗时和触发原因。
-- 每组预热 5 秒，随后统计 30 秒。初始化的多次首帧发送不计入。
-- 记录先保存在内存，统计窗口结束后写入 CSV，避免每帧日志 I/O 干扰。
-- 每次运行使用真实全局显示锁，正常退出原版后再启动计时程序。帧率程序以普通权限运行；只有独立温度测试经过 UAC 提权。
-- GIF 场景使用当前安装配置的副本：`fps=30`、原 102 帧 GIF（每帧 50 ms，即素材 20 FPS）、原模板、Agency FB、亮度 0.90、传感器间隔 1000 ms，并保留音频频谱。
-- 内置动画场景只在配置副本中去掉背景 GIF，使用程序原有动效，仍设 `fps=30`。
+- Isolated copies of main `2badea5` and the fixed branch `0e25fd6` used the same Release settings.
+- Timing-only instrumentation recorded the monotonic clock, preparation/transmission duration, and trigger after successful `device.send_packet` calls.
+- Each case warmed up for 5 seconds, then measured 30 seconds. Startup's repeated first frames were excluded.
+- Records stayed in memory until the measurement window ended.
+- Each run held the real global display lock after the original program exited. Frame-rate runners used ordinary privileges.
+- The GIF case copied the installed configuration: `fps=30`, the original 102-frame GIF with 50 ms delays (20 FPS source), the original template, Agency FB, brightness 0.90, 1000 ms sensor sampling, and audio spectrum enabled.
+- The procedural case removed only the background GIF from the configuration copy and kept `fps=30`.
 
-统计的是软件完整帧发送成功，未使用 USBPcap，也不能等同于面板实际扫描刷新率。这里不是直接对原安装二进制进行插桩，而是使用相同配置的源码计时构建。
+These counts represent successful complete-frame software sends, not camera FPS or panel scan-out frequency. No USBPcap was used. The original installed binary was not instrumented directly; source builds with equivalent settings were measured.
 
-## 测量结果
+## Results before optimization
 
-| 场景 | 30 秒成功发送帧包 | 完整帧发送/秒 | 动画推进/秒 | 仅音频更新发包 | 数据量 MB/s |
+| Case | Successful packets in 30 s | Packet FPS | Animation FPS | Audio-only packets | MB/s |
 |---|---:|---:|---:|---:|---:|
-| 当前主分支 + GIF | 590 | 19.67 | 16.17 | 105 | 9.06 |
-| 修复分支 + 同一 GIF | 590 | 19.67 | 16.13 | 106 | 9.06 |
-| 修复分支 + 内置动画 | 768 | 25.60 | 22.37 | 97 | 11.80 |
+| Main + GIF | 590 | 19.67 | 16.17 | 105 | 9.06 |
+| Fixed branch + same GIF | 590 | 19.67 | 16.13 | 106 | 9.06 |
+| Fixed branch + procedural animation | 768 | 25.60 | 22.37 | 97 | 11.80 |
 
-音频更新可能发送包含同一背景动画帧的新画面，因此完整帧发送率高于动画推进率。GIF 的 20 FPS 是素材节奏，`fps=30` 是动画上限，均不能替代实测结果。
+Audio updates can transmit a new dashboard with the same background frame. Packet FPS is therefore higher than animation advancement. Neither a 20 FPS source nor a 30 FPS limit replaces actual measurement.
 
-| 场景 | 单帧发送中位数 ms | 发送 P95 ms | 发送最大值 ms | 准备中位数 ms | 准备 P95 ms |
+| Case | Median send ms | Send P95 ms | Maximum send ms | Median preparation ms | Preparation P95 ms |
 |---|---:|---:|---:|---:|---:|
-| 当前主分支 + GIF | 14.455 | 23.511 | 29.697 | 2.007 | 3.755 |
-| 修复分支 + GIF | 14.448 | 23.087 | 29.501 | 2.065 | 3.832 |
-| 修复分支 + 内置动画 | 14.449 | 22.076 | 28.575 | 2.543 | 4.559 |
+| Main + GIF | 14.455 | 23.511 | 29.697 | 2.007 | 3.755 |
+| Fixed branch + GIF | 14.448 | 23.087 | 29.501 | 2.065 | 3.832 |
+| Fixed branch + procedural animation | 14.449 | 22.076 | 28.575 | 2.543 | 4.559 |
 
-三组均正常完成，未出现发送错误。修复分支在该 GIF 场景下与当前主分支基本一致；本次没有观察到明显的帧率回退。内置动画也未达到稳定 30 FPS。本次仅测量，没有调整调度、USB 分块或协议，不能将未达目标的原因全部归于某一个环节。
+All runs completed without transmission errors. The fixed branch showed no material regression in this GIF case, but procedural animation did not yet reach 30 FPS. At this stage only measurements were added; scheduling, USB chunks, and protocol were unchanged.
 
-每组仅进行一次 30 秒测量，结果代表本机当时负载，不是所有硬件和素材的性能保证。
+Each case was a single 30-second run under the machine's current load, not a guarantee for every machine or asset.
 
-## 恢复与材料
+## Restoration and evidence
 
-测量后原版 `LoopPanel.exe` 已恢复运行（新进程号 288156），摄像头确认原画面正常。原配置逐字节未变，保留用户已选择的 30 帧上限；现有温度服务继续运行。未修改驱动、安装或替换服务、发表评论、推送或合并远端 PR。
+The original program was restored as process 288156 and observed through the camera. Original configuration bytes were unchanged, including the owner's 30 FPS limit. The existing service continued running. No drivers or services were installed/replaced, and no remote PR operations occurred during validation.
 
-主仓库 `target/pr-validation/` 中保存：
+Local evidence in the validating machine's ignored `target/pr-validation/` directory:
 
-- `temperature-readonly/src/main.rs`：管理员测试源码。
-- `temperature-readonly-results.txt`、`temperature-summary.json`：温度原始记录及汇总。
-- `temperature-service-before.json`、`temperature-service-unchanged.json`：服务前后核对。
-- `fps/`：临时计时源码副本、普通权限运行器、配置副本、三组原始 CSV 和日志、`summary.json`、恢复记录。
-- `evidence/15-temperature-fps-restored.png`：恢复原版后的摄像头截图。
+- `temperature-readonly/src/main.rs`: elevated test source.
+- `temperature-readonly-results.txt` and `temperature-summary.json`: raw readings and summary.
+- `temperature-service-before.json` and `temperature-service-unchanged.json`: service comparison.
+- `fps/`: timing source copies, ordinary-user runners, configuration copies, three CSV/log sets, `summary.json`, and restoration record.
+- `evidence/15-temperature-fps-restored.png`: restored physical display.

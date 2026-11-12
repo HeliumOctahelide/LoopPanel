@@ -1,61 +1,75 @@
-# 架构说明
+# Architecture
 
-LoopPanel 分为可复用的上层显示管线和当前 TM-360 专用的设备传输层。
+**English** | [简体中文](ARCHITECTURE.zh-CN.md)
+
+LoopPanel separates a reusable display pipeline from the transport currently validated for the TM-360.
 
 ```text
-配置 + PNG/JPEG/GIF/内置动效
-                │
-                ├── 480×270 中央背景
-                │
-Windows/NVML ── MiniJinja ── SVG ── resvg ── 缓存 RGBA 仪表层
-传感器          │
-                └── WASAPI ── Hann 窗 ── FFT ── 16 段方格
-                                      │
-                              480×480 RGBA
-                                      │
-                         limited-range UYVY422
-                                      │
-                         MS9132 帧头 + 帧尾
-                                      │
-                    HID 控制 + libusb0 EP04 bulk OUT
+Configuration + PNG/JPEG/GIF/procedural animation
+                   |
+                   +-- centered 480x270 background or full-screen large-text background
+                   |
+Windows sensors -- MiniJinja -- SVG -- resvg -- cached RGBA dashboard
+                   |
+                   +-- WASAPI -- Hann window -- FFT -- 16 spectrum bands
+                                                 |
+                                          480x480 RGBA
+                                                 |
+                                      limited-range UYVY422
+                                                 |
+                                       MS9132 header + trailer
+                                                 |
+                                  HID control + libusb0 EP04 bulk OUT
 ```
 
-## 模块
+## Modules
 
-| 文件 | 职责 |
+| File | Responsibility |
 |---|---|
-| `config.rs` | TOML 读取、相对路径解析和取值约束 |
-| `media.rs` | PNG/JPEG/GIF、内置动效与中央 16:9 背景 |
-| `render.rs` | MiniJinja 上下文、SVG 栅格化、Alpha 合成和频谱绘制 |
-| `audio.rs` | WASAPI 回环、混音格式解码、FFT、16 段和平滑 |
-| `monitor.rs` | CPU 拓扑/负载/频率、内存、GPU 后端选择（NVML 优先，其次 ADL，最后是 Windows 通用接口）与 I/O 快照 |
-| `adl.rs` | AMD Radeon 传感器：ADL 适配器选择与性能日志解码 |
-| `windows_gpu.rs` | 厂商无关的 GPU 传感器：PDH 的 GPU 计数器（占用率、显存用量）与 D3DKMT（显存总量、温度），用于没有 NVML/ADL 的显卡 |
-| `io_metrics.rs` | IP Helper 网络计数与 PDH 磁盘速率 |
-| `temperature*.rs` | PawnIO CPU 温度（Intel Package、AMD Tctl/Tdie）客户端和最小服务 |
-| `protocol.rs` | 480×480 RGBA → UYVY422 与帧封装 |
-| `transport.rs` | TM-360 枚举、HID 初始化、bulk 分块与帧发送 |
-| `display.rs` | 传感器、仪表、频谱、动画和保活调度 |
-| `tray.rs` | 单一 GUI 入口、首次 UAC 温度服务安装、Win32 托盘、工作线程和显式退出 |
-| `startup.rs` | HKCU 登录启动 |
-| `settings.rs` | 托盘菜单里的显示选项：布局（默认仪表盘 / 内置大字布局）、自动轮换及其间隔、温度单位（摄氏 / 华氏），保存在 HKCU 并与显示线程共享 |
-| `i18n.rs` + `locales/*.toml` | 界面文字消息目录：按 Windows 显示语言选择语言文件，按键查找，缺失时回退到英文 |
-| `process.rs` | 厂商软件（JONSBO-AIO、LCD Fusion）冲突检查和全局显示锁 |
+| `config.rs` | TOML loading, relative paths, value limits, and safe localization of bundled comments |
+| `media.rs` | PNG/JPEG/GIF, procedural animation, and background placement |
+| `render.rs` | Typed MiniJinja context, SVG rasterization, alpha compositing, and spectrum drawing |
+| `audio.rs` | WASAPI loopback, mix-format decoding, FFT, 16 bands, and smoothing |
+| `monitor.rs` | CPU topology/load/frequency, memory, GPU backend selection, and I/O snapshots |
+| `adl.rs` | Radeon adapter selection and ADL performance-log decoding |
+| `windows_gpu.rs` | PDH GPU load/memory counters and D3DKMT memory totals/temperature when NVML and ADL are unavailable |
+| `io_metrics.rs` | IP Helper network counters and PDH disk rates |
+| `temperature*.rs` | PawnIO CPU temperature client and minimal service: Intel Package and AMD Tctl/Tdie |
+| `protocol.rs` | 480x480 RGBA to UYVY422 conversion and frame packaging |
+| `transport.rs` | TM-360 enumeration, HID startup, bulk chunking, and frame transmission |
+| `display.rs` | Sensor, dashboard, spectrum, animation, rotation, reload, and keep-alive scheduling |
+| `tray.rs` | GUI entry point, first-run UAC service setup, Win32 tray, worker lifecycle, and exit |
+| `startup.rs` | Start-at-login registration in HKCU |
+| `settings.rs` | Layout, rotation, temperature unit, and background preferences stored in HKCU and shared with the display thread |
+| `i18n.rs` and `locales/*.toml` | Embedded message catalogs selected by Windows UI language, with English fallback |
+| `process.rs` | JONSBO-AIO/LCD Fusion conflict checks and the global display lock |
 
-## 权限边界
+GPU backend priority is NVML, then ADL, then Windows counters.
 
-托盘、模板、媒体、监控和 USB 显示进程都以普通用户运行。Windows 不提供普通用户可用的 Intel Package 或 AMD Tctl 温度接口，因此温度功能单独使用一个 LocalSystem 服务。首次双击主程序且服务缺失时，主程序通过 `ShellExecuteExW` 请求 UAC、等待安装完成并验证普通用户管道读取；后续启动不再提权。服务只暴露固定的一字节采样请求和温度响应，不允许客户端指定 MSR/SMN 地址或执行写操作。服务启动时按 CPUID 厂商与家族选择 IntelMSR 或 AMDFamily17 模块；AMD 的 SMN 读取是“写索引、读数据”两步，因此每次采样都在 `Global\Access_PCI` 互斥量内完成，以便与其他硬件监控软件串行。
+## Privilege boundary
 
-## 调度
+The tray, templates, media, monitoring, and USB display process run as the normal user. Windows does not expose the required Intel Package or AMD Tctl readings to ordinary users, so temperature access uses a separate LocalSystem service.
 
-- 传感器默认 1 Hz；
-- SVG 仪表层最多 1 Hz；
-- 音频频谱 5 Hz；
-- 背景按 GIF 原始延迟或配置的 FPS 上限；
-- 内容没有变化时每秒重发缓存帧，这是当前 TM-360 实机验证过的保活条件。
+If the service is missing, the GUI requests UAC through `ShellExecuteExW`, waits for installation, and verifies an ordinary-user pipe read. Later launches reuse the service without elevation. The service exposes one fixed sampling request and a temperature response; clients cannot supply MSR/SMN addresses or write requests.
 
-调度只在内容实际变化时进行 RGBA 合成、UYVY 转换和 USB 发送，避免静态背景按配置 FPS 空转。
+At startup the service selects IntelMSR or AMDFamily17 by CPUID vendor and family. An AMD SMN read writes the fixed index and reads its data, so each sample holds `Global\Access_PCI` to serialize access with cooperating monitoring software.
 
-## 动态库
+## Scheduling and content changes
 
-程序动态加载 Windows 系统目录中的 `hid.dll`、`setupapi.dll`、`libusb0.dll`、`nvml.dll`、`atiadlxx.dll`、`iphlpapi.dll` 和 `pdh.dll`。缺少 NVML 与 ADL 或部分监控能力只会使相应模板字段成为 `none`；缺少显示所需的 HID/libusb0 则写屏失败并返回明确错误。
+- Sensors default to 1 Hz.
+- Scheduled SVG dashboard refreshes occur at up to 1 Hz.
+- The audio spectrum updates at 5 Hz.
+- Animation follows the GIF's frame delays or the configured FPS limit.
+- When content is unchanged, the cached frame is resent every second, matching the validated TM-360 keep-alive behavior.
+
+Only changed content is composited and encoded. Static backgrounds do not redraw at the configured animation FPS.
+
+Animation deadlines advance from the previous planned deadline, so late wake-ups do not accumulate as permanent drift. If a full period has already been missed, the next period starts from the current time instead of queuing a burst of old frames. See [frame-pacing validation](ANIMATION_FRAME_PACING.md).
+
+Reloads and layout changes prepare the configuration, renderer, background, and encoded frame before replacing the active content. Failed changes retain the valid display. Unit-only changes reuse accepted resources and preserve GIF progress. Successful reloads schedule an immediate sensor sample.
+
+## Dynamic libraries
+
+Windows libraries and driver interfaces are loaded from the system directory, including `hid.dll`, `setupapi.dll`, `libusb0.dll`, `nvml.dll`, `atiadlxx.dll`, `gdi32.dll`, `iphlpapi.dll`, and `pdh.dll`.
+
+Unavailable monitoring features produce `none` values. Missing HID/libusb0 dependencies required for the display produce an explicit error.

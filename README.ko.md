@@ -1,6 +1,6 @@
 # LoopPanel
 
-[简体中文](README.md) | [English](README.en.md) | **한국어**
+[English](README.md) | [简体中文](README.zh-CN.md) | **한국어**
 
 ![LoopPanel 아이콘](assets/looppanel-icon-256.png)
 
@@ -100,6 +100,12 @@ LoopPanel.exe
 - 연결 실패 후 재시도
 - 종료 및 USB 인터페이스 해제
 
+### 업데이트
+
+새 버전을 압축 해제하기 전에 기존 프로그램을 트레이에서 종료하십시오. 설정, 사용자 템플릿과 배경을 백업하고 필요에 따라 새 디렉터리로 옮기십시오. 기본 대시보드는 온도 단위 전환을 지원하도록 업데이트되었습니다. 실행 파일 경로가 바뀌면 새 프로그램에서 로그인 시 자동 시작을 다시 설정하십시오.
+
+이미 설치된 온도 서비스는 재사용되며, 앱 업데이트 시 자동으로 교체되지 않습니다.
+
 ## 설정
 
 프로그램은 항상 `LoopPanel.exe` 옆의 `looppanel.toml`을 읽습니다. 배경, 템플릿, 글꼴의 상대 경로는 모두 이 설정 파일이 있는 디렉터리를 기준으로 합니다.
@@ -152,7 +158,7 @@ show_sensors = true
 
 ## 기술 스택
 
-- Rust 2024 edition. 실측 툴체인은 Rust 1.97.1
+- Rust 2024 edition. 실측 툴체인은 Rust 1.99.1
 - `x86_64-pc-windows-gnullvm`, `rust-lld`, `+crt-static`, Thin LTO
 - Win32, SetupAPI, HID Feature Report, `libusb0` bulk OUT
 - MiniJinja 2.21 + resvg/usvg/tiny-skia
@@ -192,8 +198,12 @@ cargo build --release --bins --locked
 - HID, SetupAPI, `libusb0.dll`, `nvml.dll`, `atiadlxx.dll`은 Windows 시스템 디렉터리에서만 불러옵니다.
 - 디스플레이 경로에는 펌웨어, EEPROM, USB 디스크립터 또는 알 수 없는 명령을 쓰는 기능이 없습니다.
 - CPU 온도 서비스는 고정된 샘플링 요청만 받으며, 임의의 MSR/SMN 주소나 쓰기 작업은 받지 않습니다. AMD 경로에서는 공식 모듈이 SMN 인덱스 레지스터에 고정된 온도 레지스터 주소를 쓴 뒤 데이터를 읽으며, 그동안 `Global\Access_PCI` 뮤텍스를 점유합니다.
-- 현재 바이너리는 아직 Authenticode 서명이 되어 있지 않으므로, 공개 배포 전에 코드 서명과 Windows 버전 리소스를 완료해야 합니다.
+- 현재 배포 바이너리는 Authenticode 서명이 되어 있지 않습니다.
 
 ## 다른 화면 지원 추가
 
 해상도를 바꾸거나 VID/PID를 재사용하는 방식으로 호환성을 추측하지 마십시오. 새로운 화면마다 디스크립터, 공식 소프트웨어 시작 캡처, 프레임 구조, 색상 방향, 분할/트리거, 킵얼라이브에 대한 실측이 필요합니다. 전체 절차, 코드 반영 위치, 검수 체크리스트는 [장치 이식 가이드](docs/DEVICE_PORTING.md)를 참고하십시오.
+
+## 애니메이션 검증
+
+애니메이션은 예정된 프레임 주기를 유지합니다. 검증 시스템에서 `fps=30`으로 실행한 내장 애니메이션은 두 번의 60초 테스트에서 모두 평균 30.00 FPS를 기록했습니다. GIF는 원본 프레임 간격을 유지합니다. [측정 기록](docs/ANIMATION_FRAME_PACING.md)을 참고하십시오.

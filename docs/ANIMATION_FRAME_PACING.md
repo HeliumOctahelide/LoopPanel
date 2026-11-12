@@ -1,78 +1,86 @@
-# 动画帧率瓶颈与固定节拍验证
+# Animation Frame Pacing and Validation
 
-日期：2026-11-12（香港时间）。独立分支：`codex/pr-integration-fixes`。优化基线为 `e9ce727`。
+**English** | [简体中文](ANIMATION_FRAME_PACING.zh-CN.md)
 
-## 结论
+Date: 2026-11-12, Hong Kong time. Branch: `codex/pr-integration-fixes`. Baseline: `e9ce727`.
 
-本机内置动画由实测约 22.38 FPS 提升到 30.00 FPS。最终修复版本在两次各 60 秒的实机测量中均发送了 1,800 个推进动画的帧；全部 5 秒窗口为 29.8–30.2 FPS。
+## Result
 
-生产改动仅涉及 `src/display.rs` 的下一动画期限计算。驱动、USB 协议、分块、初始化、传感器、音频采样和一秒保活周期均未修改，也没有提高线程优先级、设置系统计时精度或加入忙等。
+On the validation machine, procedural animation improved from approximately 22.38 FPS to 30.00 FPS. Two final 60-second runs each transmitted 1,800 animation-advancing frames; every five-second window was between 29.8 and 30.2 FPS.
 
-这是稳定的窗口平均动画帧率，不是严格实时的逐帧间隔保证。优化后帧间隔 P95 约 47.5–47.6 ms，仍有调度和发送抖动。
+The production change affects only the next animation deadline in `src/display.rs`. Drivers, USB protocol/chunking/startup, sensors, audio sampling, and one-second keep-alive behavior were unchanged. No busy waiting, thread-priority increase, or system timer-resolution change was introduced.
 
-## 定位与单变量对照
+This is stable window-average throughput, not hard real-time frame spacing. Frame-interval P95 remained approximately 47.5–47.6 ms.
 
-先考虑三个可验证原因：晚醒延迟随相对期限逐帧累积、音频额外发帧挤占动画时间、画面准备或 USB 发送超出每帧预算。
+## Diagnosis and controlled experiment
 
-基线每次动画触发时的晚醒中位数约 12.97 ms，单帧发送中位数约 14.43 ms，准备中位数约 3.68 ms。旧实现把下一帧设为 `now + interval`，因此本次晚醒的时间进入后续帧期限，反复累计。30 FPS 的约 33.3 ms 节拍被持续拉长。
+Three hypotheses were considered: late wake-ups accumulating in relative deadlines, audio-only packets consuming animation time, and preparation or USB transmission exceeding the frame budget.
 
-单变量实验只改动画期限计算：
+The baseline animation-trigger lateness median was approximately 12.97 ms; median transmission was 14.43 ms and preparation 3.68 ms. The old `now + interval` calculation carried the current late wake-up into the next deadline, repeatedly lengthening the intended 33.3 ms cadence.
 
-- 正常情况下使用 `previous_deadline + interval`，维持原定节拍。
-- 如果这个新期限也已经到达或过去，则从 `now + interval` 重新起拍，每轮仍只推进一帧，不建立积压帧补发循环。
+The single-variable experiment changed only deadline calculation:
 
-首轮 30 秒对照从 22.50 FPS 提升为 30.03 FPS；USB 发送中位数为 14.435 / 14.434 ms，基本相同。没有关闭音频或传感器。因此，已确认的主要问题是期限漂移，不需要改动 USB 传输以达到此次目标。
+- Normally advance from `previous_deadline + interval`.
+- If that new deadline has already arrived or passed, restart from `now + interval`. Advance one frame per iteration rather than queuing a catch-up burst.
 
-## 测量方法与验收口径
+The first 30-second comparison improved from 22.50 to 30.03 FPS while median USB transmission stayed at 14.435 / 14.434 ms. Sensors and audio remained enabled. Accumulated deadline drift was the demonstrated main cause; changing the transport was unnecessary for this target.
 
-使用与生产代码一致的独立计时构建，在完整帧发送成功后记录时间戳、准备耗时、发送耗时、晚醒时间和触发原因。记录先保存在内存，窗口结束后写入 CSV。初始化首帧不计入，每组先预热 5 秒。
+## Method and acceptance criteria
 
-两组均使用本机 Intel CPU、NVIDIA GPU、TM-360 和相同模板、Agency FB、亮度 0.90、传感器间隔 1000 ms、音频频谱开启、`fps=30`。内置动画使用配置副本移除 GIF 背景，原安装配置不变。
+A production-equivalent timing build recorded timestamps, preparation/transmission duration, wake-up lateness, and trigger after each successful complete-frame send. Samples stayed in memory until the window ended. Startup frames were excluded and each run warmed up for five seconds.
 
-验收脚本在对照实验前定义：平均动画帧率距目标不超过 0.5 FPS；每个 5 秒窗口距目标不超过 1 FPS；帧间隔 P95 不超过目标周期的 1.5 倍，最大间隔不超过 3 倍。该口径衡量本机正常负载下的稳定吞吐，不构成硬实时保证。
+Both versions used the same Intel CPU, NVIDIA GPU, TM-360, template, Agency FB, brightness 0.90, 1000 ms sensor sampling, audio spectrum, and `fps=30`. The procedural case removed the GIF only from a configuration copy.
 
-## 优化前后数据
+Before the controlled runs, the acceptance script required:
 
-| 场景 | 测量时间 | 动画帧数 | 动画 FPS | 5 秒窗口 FPS 范围 | 完整帧包 FPS |
+- Average animation FPS within 0.5 of the target.
+- Every five-second window within 1 FPS of the target.
+- Frame-interval P95 at most 1.5 target periods, and the maximum interval at most 3 periods.
+
+These criteria measure stable throughput under normal local load, not hard real-time behavior.
+
+## Before and after
+
+| Case | Window | Animation frames | Animation FPS | Five-second FPS range | Complete-packet FPS |
 |---|---:|---:|---:|---:|---:|
-| 优化前，内置动画 | 60 s | 1,343 | 22.38 | 22.0–22.8 | 25.73 |
-| 优化后，内置动画，第 1 次 | 60 s | 1,800 | 30.00 | 30.0–30.0 | 31.87 |
-| 优化后，内置动画，第 2 次 | 60 s | 1,800 | 30.00 | 29.8–30.2 | 32.00 |
-| 优化后，原 20 FPS GIF | 30 s | 600 | 20.00 | 20.0–20.0 | 22.70 |
+| Before, procedural | 60 s | 1,343 | 22.38 | 22.0–22.8 | 25.73 |
+| After, procedural, run 1 | 60 s | 1,800 | 30.00 | 30.0–30.0 | 31.87 |
+| After, procedural, run 2 | 60 s | 1,800 | 30.00 | 29.8–30.2 | 32.00 |
+| After, original 20 FPS GIF | 30 s | 600 | 20.00 | 20.0–20.0 | 22.70 |
 
-完整帧包数包含只更新音频频谱的画面，不能直接当作动画帧率。GIF 保留其原有 50 ms 帧延迟，没有被加速到 30 FPS。
+Packet counts include audio-only updates and must not be treated as animation FPS. The GIF retained its 50 ms source delays instead of being accelerated to 30 FPS.
 
-| 场景 | 动画帧间隔中位数 ms | 动画帧间隔 P95 ms | 最大间隔 ms | 发送中位数 ms | 发送 P95 ms |
+| Case | Median animation interval ms | Interval P95 ms | Maximum interval ms | Median send ms | Send P95 ms |
 |---|---:|---:|---:|---:|---:|
-| 优化前，内置动画 | 45.931 | 49.278 | 62.034 | 14.428 | 21.930 |
-| 优化后，第 1 次 | 31.529 | 47.477 | 54.009 | 14.425 | 17.939 |
-| 优化后，第 2 次 | 31.743 | 47.609 | 52.034 | 14.424 | 17.074 |
-| 优化后，原 GIF | 47.215 | 63.835 | 71.715 | 14.435 | 23.220 |
+| Before, procedural | 45.931 | 49.278 | 62.034 | 14.428 | 21.930 |
+| After, run 1 | 31.529 | 47.477 | 54.009 | 14.425 | 17.939 |
+| After, run 2 | 31.743 | 47.609 | 52.034 | 14.424 | 17.074 |
+| After, GIF | 47.215 | 63.835 | 71.715 | 14.435 | 23.220 |
 
-所有实机运行正常结束，无发送错误。最终两次内置动画及 GIF 回归均通过预先定义的验收脚本，基线未通过。结果来自软件完整帧发送成功的计时，不是摄像头帧率，也不代表面板扫描刷新率。
+All runs ended normally without transmission errors. Both final procedural runs and the GIF regression passed the predefined criteria; the baseline failed. Counts came from successful software sends, not the camera or the panel's scan-out rate.
 
-## 回归检查
+## Regression checks
 
-先将旧期限算法提取到实际调用的函数，运行 `late_animation_wakes_do_not_accumulate_frame_drift`，测试因首帧期限额外漂移 13 ms 而失败；修改算法后通过。
+The old calculation was first extracted into the actual production call path. `late_animation_wakes_do_not_accumulate_frame_drift` failed with an extra 13 ms on the first deadline, then passed after the fix.
 
-新增三项离线测试：
+Three offline tests cover:
 
-- 持续晚醒 13 ms，300 个周期后仍保持原定期限。
-- 落后整周期及恰好到达边界时重新起拍。
-- 不同 GIF 帧延迟及 `fps` 限制仍按原定节拍推进。
+- Three hundred cycles of 13 ms late wake-ups without accumulated drift.
+- Restarting after a whole missed period or exact boundary.
+- Variable GIF delays and the FPS limit preserving the intended schedule.
 
-最终 `cargo fmt --all -- --check`、`cargo test --all-targets --locked --offline`、`cargo clippy --all-targets --locked --offline -- -D warnings`、`cargo build --release --bins --locked --offline` 全部通过。离线测试为 63 项通过、1 项需显式授权的 GPU 硬件测试忽略；该 GPU 测试已在此前任务中单独实测通过，本次没有修改其路径。
+Formatting, all-target offline tests, Clippy with denied warnings, and both Release binaries passed. The suite had 63 passing offline tests and one explicitly invoked GPU hardware test ignored by default. That GPU path had already passed hardware validation and was unchanged here.
 
-规范轴与功能轴复审均未发现阻断问题。仍需注意：持续的系统高负载或单次工作超过帧预算时，普通桌面线程无法保证每一帧都达到 33.3 ms。
+Standards and specification reviews found no blocking issue. Sustained system load or work exceeding the frame budget can still prevent an ordinary desktop thread from delivering every frame at exactly 33.3 ms.
 
-## 恢复与材料
+## Restoration and local evidence
 
-原版 LoopPanel 已恢复运行（进程 333008），摄像头确认原画面正常；原配置逐字节未变，保留 `fps=30`，温度服务仍为原进程 5964。没有修改驱动或现有服务，没有发表评论、推送或合并远端 PR。
+The original program was restored as process 333008 and observed through the camera. Original configuration bytes were unchanged, retaining `fps=30`; the existing temperature service remained process 5964. Drivers/services and remote PRs were not changed during validation.
 
-临时计时源码、运行器、验收脚本、每组 CSV/JSON/日志和四项检查日志保存在主仓库 `target/pr-validation/fps-optimization-20261112/`。`analyze.mjs` 可直接重算结果，例如：
+The validating machine's ignored `target/pr-validation/fps-optimization-20261112/` directory contains timing source copies, runners, acceptance script, per-run CSV/JSON/logs, and the four check logs. For example:
 
 ```powershell
 node target/pr-validation/fps-optimization-20261112/analyze.mjs target/pr-validation/fps-optimization-20261112/optimized-long-1.csv 60 30 --require-target
 ```
 
-计时代码仅存在于忽略的测试材料目录；提交到独立分支的生产代码没有测量钩子。
+Timing hooks remained in the isolated test copies; production commits contain only the scheduling fix and tests.

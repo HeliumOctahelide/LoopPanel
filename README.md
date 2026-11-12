@@ -1,107 +1,116 @@
 # LoopPanel
-[简体中文](README.md) | [English](README.en.md) | [한국어](README.ko.md)
 
-![LoopPanel 图标](assets/looppanel-icon-256.png)
+**English** | [简体中文](README.zh-CN.md) | [한국어](README.ko.md)
 
-LoopPanel 是一个面向 Windows 的轻量原生 USB 屏显程序。它把本地图片、GIF 或内置动效与可编辑的 MiniJinja + SVG 模板组合，采集本机硬件信息和播放音频频谱，再把完整画面直接发送给受支持的屏幕。
+[Download 0.1.0-rc.4](https://github.com/HeliumOctahelide/LoopPanel/releases/tag/v0.1.0-rc.4) · [Changelog](CHANGELOG.md)
 
-当前完成验收的设备配置是 JONSBO TM-360 的 480×480 MacroSilicon MS9132 屏幕。贡献者另报告一台 TM-280 在 Ryzen 7 7800X3D + Radeon RX 9070 XT 平台运行成功；该设备的识别指纹和完整验收记录仍待补充。项目名称是通用的，传输层目前不是“所有 JONSBO 屏幕通用驱动”。详见[兼容性](#兼容性)与[设备迁移指南](docs/DEVICE_PORTING.md)。
+![LoopPanel icon](assets/looppanel-icon-256.png)
 
-![默认模板预览](assets/looppanel-preview.png)
+LoopPanel is a lightweight native USB display program for Windows. It combines a local image, GIF, or built-in animation with an editable MiniJinja + SVG template, collects local hardware information and audio spectrum data, and sends the complete frame directly to a supported display.
 
-LoopPanel 是独立社区项目，与 JONSBO、MacroSilicon、PawnIO、NVIDIA 或 AMD 没有隶属或官方授权关系。
+The accepted device configuration is the JONSBO TM-360 with its 480×480 MacroSilicon MS9132 display. A contributor also reports one TM-280 working on a Ryzen 7 7800X3D + Radeon RX 9070 XT system; its identifying fingerprint and full acceptance record are still pending. The project name is generic, but the transport layer is currently not a universal driver for all JONSBO displays. See [Compatibility](#compatibility) and the [device porting guide](docs/DEVICE_PORTING.md).
 
-## 项目来源
+![Default template preview](assets/looppanel-preview.png)
 
-本项目始于替代 JONSBO TM-360 官方常驻软件的需求。实现过程在真实设备上完成了 USB 描述符核对、公开抓包比对、帧格式验证、颜色与方向测试、保活实验、资源测量和长时间动态显示测试。
+LoopPanel is an independent community project and is not affiliated with, or officially authorized by, JONSBO, MacroSilicon, PawnIO, NVIDIA, or AMD.
 
-显示协议以 [Fakinvisibility/b360gt-driver](https://github.com/Fakinvisibility/b360gt-driver/tree/94ae7f2a710123b582ca3fa806d85ee1c684e287) 的 B360GT Windows USBPcap 实机捕获为主要依据；启动时序、UYVY422 编码和帧分块已在本机 TM-360 上实际通过。DS339 的后续实机修正也用于排除早期错误的 BGR888 结论：[UYVY 修正](https://github.com/emaspa/InfoPanel-linux/commit/21fe373f8de962491169d0d611fb297321df60ec)、[初始化节拍修正](https://github.com/emaspa/InfoPanel-linux/commit/94415ac46260cf5f1b0d4e670b9a48e4ad38105b)。
+## Project Origin
 
-仓库采用 MIT License。第三方组件和 PawnIO IntelMSR、AMDFamily17 模块的许可见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 与 [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt)。
+This project started from the need to replace the resident official software for the JONSBO TM-360. During development, the following were done on real hardware: USB descriptor verification, comparison against public captures, frame format verification, color and orientation tests, keep-alive experiments, resource measurements, and long-running dynamic display tests.
 
-## 主要能力
+The display protocol is based mainly on the B360GT Windows USBPcap hardware capture from [Fakinvisibility/b360gt-driver](https://github.com/Fakinvisibility/b360gt-driver/tree/94ae7f2a710123b582ca3fa806d85ee1c684e287). The startup timing, UYVY422 encoding, and frame chunking have been verified on a local TM-360. Later hardware fixes for the DS339 were also used to rule out the earlier incorrect BGR888 conclusion: the [UYVY fix](https://github.com/emaspa/InfoPanel-linux/commit/21fe373f8de962491169d0d611fb297321df60ec) and the [initialization timing fix](https://github.com/emaspa/InfoPanel-linux/commit/94415ac46260cf5f1b0d4e670b9a48e4ad38105b).
 
-- 双击一个 `LoopPanel.exe` 即可启动屏显和原生 Win32 托盘；
-- 首次缺少 CPU 温度服务时自动弹出一次 UAC，安装成功后后续启动不再提权；
-- 托盘内启用登录时自动启动、打开配置、查看状态和安全退出；
-- 三张原创 16:9 样例背景、PNG、JPEG、GIF 和无素材时的内置动效；
-- 480×270 的 16:9 中央图片区，以及可自由编辑的 480×480 SVG 仪表层；
-- CPU、RAM、NVIDIA 或 AMD Radeon GPU、显存、网络和磁盘信息；
-- WASAPI 回环采集、1024 点 FFT、16 段实时音频频谱；
-- 托盘菜单可切换显示布局（默认仪表盘，或四种内置大字布局：简洁、CPU + GPU、温度、时钟）和温度单位（摄氏 / 华氏），也可以让布局按设定的间隔自动轮换；
-- 托盘界面和提示信息跟随 Windows 显示语言：简体中文、英文、韩文；
-- 单实例屏幕锁和官方软件冲突检查。
+The repository is licensed under the MIT License. For the licenses of third-party components and the PawnIO IntelMSR and AMDFamily17 modules, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
 
-程序没有浏览器引擎、Web 服务、账户、遥测、自动更新或 ARGB 控制代码。
+## Features
 
-## 兼容性
+- Double-click a single `LoopPanel.exe` to start the display and the native Win32 tray icon;
+- If the CPU temperature service is missing on first run, a UAC prompt appears once; after a successful install, later launches do not elevate;
+- From the tray: enable start at login, open the configuration, view status, and exit safely;
+- Three original 16:9 sample backgrounds, PNG, JPEG, GIF, and a built-in animation when no asset is provided;
+- A 480×270 16:9 central image area, and a freely editable 480×480 SVG dashboard layer;
+- CPU, RAM, NVIDIA or AMD Radeon GPU, video memory, network, and disk information;
+- WASAPI loopback capture, 1024-point FFT, and a 16-band real-time audio spectrum;
+- A tray menu to switch the display layout (the default dashboard, or four built-in large-text layouts: Simple, CPU + GPU, Temperatures and Clock) and the temperature unit (Celsius / Fahrenheit), and to rotate through the layouts automatically at a chosen interval;
+- Tray text and messages that follow the Windows display language: Simplified Chinese, English, Korean;
+- A single-instance display lock and a check for conflicts with the official software.
 
-当前唯一受支持且经过实机验证的设备配置如下：
+The program contains no browser engine, web service, account, telemetry, auto-update, or ARGB control code.
 
-| 项目 | 当前配置 |
+## Compatibility
+
+The only supported and hardware-verified device configuration is:
+
+| Item | Current configuration |
 |---|---|
-| 实测产品 | JONSBO TM-360；另有贡献者提供的单台 TM-280 运行报告 |
+| Tested product | JONSBO TM-360; an additional contributor report covers one TM-280 unit |
 | USB VID/PID | `345F:9132` |
-| 控制器族 | MacroSilicon MS9132 |
-| 分辨率 | 480×480 |
-| 显示模式 | VIC 143、UYVY422 |
-| 控制接口 | HID interface 0，9 字节 Feature Report 缓冲区 |
-| 视频接口 | vendor interface 3，bulk OUT endpoint `0x04` |
-| 一帧大小 | 460,816 字节 |
-| 分块 | `7 × 65,536 + 2,064`，帧后无 ZLP |
-| Windows 驱动 | `HidUsb` + `libusb0`，通常显示为 `MS USB Display` |
+| Controller family | MacroSilicon MS9132 |
+| Resolution | 480×480 |
+| Display mode | VIC 143, UYVY422 |
+| Control interface | HID interface 0, 9-byte Feature Report buffer |
+| Video interface | vendor interface 3, bulk OUT endpoint `0x04` |
+| Frame size | 460,816 bytes |
+| Chunking | `7 × 65,536 + 2,064`, no ZLP after the frame |
+| Windows driver | `HidUsb` + `libusb0`, usually shown as `MS USB Display` |
 
-传感器采集与屏幕传输层相互独立，按本机硬件自动选择：
+Sensor collection is independent of the display transport layer and is selected automatically based on the local hardware:
 
-| 硬件 | 数据来源 | 说明 |
+| Hardware | Data source | Notes |
 |---|---|---|
-| Intel CPU | PawnIO `IntelMSR` | Package 温度 |
-| AMD CPU，Family 17h–1Ah（Zen 至 Zen 5） | PawnIO `AMDFamily17` | SMN 报告温度 Tctl；个别 Zen/Zen+ 型号按 Linux k10temp 的偏移表换算为 Tdie |
-| NVIDIA GPU | 驱动自带 NVML | 优先使用 |
-| AMD Radeon GPU | 驱动自带 ADL（`atiadlxx.dll`） | NVML 不可用时使用；需要驱动支持 `ADL2_New_QueryPMLogData_Get`；多个 AMD 适配器并存时取专用显存最大的一个 |
-| 其他 GPU（例如 Intel Arc、核显） | Windows PDH 计数器 + D3DKMT | NVML 与 ADL 都不可用时使用；提供占用率、显存和温度（温度取决于驱动是否上报），没有功耗、风扇和时钟；已在 Radeon 上验证读数，尚未在 Intel 显卡上实机验证 |
+| Intel CPU | PawnIO `IntelMSR` | Package temperature |
+| AMD CPU, Family 17h–1Ah (Zen to Zen 5) | PawnIO `AMDFamily17` | SMN-reported temperature Tctl; a few Zen/Zen+ models are converted to Tdie using the Linux k10temp offset table |
+| NVIDIA GPU | NVML bundled with the driver | Preferred |
+| AMD Radeon GPU | ADL bundled with the driver (`atiadlxx.dll`) | Used when NVML is unavailable; requires driver support for `ADL2_New_QueryPMLogData_Get`; when multiple AMD adapters are present, the one with the most dedicated video memory is used |
+| Other GPUs (for example Intel Arc or integrated graphics) | Windows PDH counters + D3DKMT | Used when neither NVML nor ADL is available; provides load, video memory and temperature (temperature depends on whether the driver reports it), with no power, fan or clock data; readings were checked on Radeon and NVIDIA systems; Intel graphics still need hardware validation |
 
-其他 CPU（包括更早的 AMD 家族）没有温度支持，温度服务安装自检会失败并给出明确错误。
+Other CPUs (including earlier AMD families) have no temperature support, and the temperature service installation self-check fails with a clear error.
 
-仅有相同品牌、控制器或 `345F:9132` VID/PID 不足以判定兼容。同一控制器族已经发现不同分辨率、帧头高位、ZLP、触发和初始化策略。当前代码不会把其他 JONSBO 带屏水冷或其他 MS9132 OEM 屏幕误标为已支持设备。
+Having the same brand, controller, or `345F:9132` VID/PID alone is not enough to determine compatibility. Within the same controller family, different resolutions, frame header high bits, ZLP, trigger, and initialization strategies have been found. The current code does not mislabel other JONSBO liquid coolers with displays, or other MS9132 OEM displays, as supported devices.
 
-## 使用方法
+## Usage
 
-### 前置条件
+### Prerequisites
 
-1. Windows 10/11 x64；
-2. TM-360 原有的签名 `MS USB Display` / `libusb0` 驱动；
-3. 已安装 PawnIO 2.x；其驱动和 `PawnIOLib.dll` 不随本项目分发；
-4. 彻底退出正在驱动这块屏幕的厂商软件：`JONSBO-AIO.exe` 或 `LcdFusion.exe`（LCD Fusion）。
+1. Windows 10/11 x64;
+2. The original signed `MS USB Display` / `libusb0` driver of the TM-360;
+3. PawnIO 2.x installed; its driver and `PawnIOLib.dll` are not distributed with this project;
+4. The vendor software currently driving this display fully exited: `JONSBO-AIO.exe` or `LcdFusion.exe` (LCD Fusion).
 
-### 启动
+### Launch
 
-保持发布目录中的文件相对位置不变，然后双击：
+Keep the files in the release directory in their relative positions, then double-click:
 
 ```text
 LoopPanel.exe
 ```
 
-不需要参数、命令行或启动脚本。
+No arguments, command line, or launch script is needed.
 
-首次启动时，如果系统中还没有 LoopPanel CPU 温度服务，主程序会请求一次 UAC。提升后的内部服务程序会检查 PawnIO、安装并启动最小温度服务，再把控制权交回普通权限的 LoopPanel 主程序。安装成功后的手动启动和登录自启动都不再弹出 UAC。
+On first launch, if the LoopPanel CPU temperature service is not yet present on the system, the main program requests UAC once. The elevated internal service program checks PawnIO, installs and starts the minimal temperature service, and then returns control to the normal-privilege LoopPanel main program. After a successful install, neither manual launches nor start at login show a UAC prompt again.
 
-如果用户取消 UAC，或温度服务安装/自检失败，LoopPanel 会显示错误并停止本次启动，不会在缺少默认温度功能的状态下继续写屏。
+If the user cancels UAC, or the temperature service installation or self-check fails, LoopPanel shows an error and stops this launch. It does not continue writing to the display without the default temperature feature.
 
-运行后右击托盘图标可以：
+While running, right-click the tray icon to:
 
-- 查看屏幕和 CPU 温度状态；
-- 打开 `looppanel.toml`，并用“重新载入设置”让修改立即生效；
-- 在“显示”中切换布局，在“单位”中切换摄氏 / 华氏，选择立即生效并会被记住。布局有默认仪表盘和四种大字布局：简洁（CPU 温度 + 占用率）、CPU + GPU（各自的温度 + 占用率）、温度（CPU 温度 + GPU 温度）、时钟（时间，下方是 CPU / GPU 温度）；
-- 勾选“自动轮换”后按菜单顺序轮流显示所有布局，“轮换间隔”可选 10 秒 / 30 秒（默认）/ 1 分钟 / 5 分钟；轮换时在“显示”里另选布局会立刻跳到该布局并继续轮换；
-- 用“大字布局显示背景”开关大字布局下铺满画面的背景图 / GIF（背景会被压暗，文字带描边和投影）；
-- 启用或关闭“登录时自动启动”；
-- 在连接失败后重试；
-- 退出并释放 USB 接口。
+- view the display and CPU temperature status;
+- open `looppanel.toml`, and apply edits immediately with "Reload settings";
+- switch the layout under "Display", and between Celsius and Fahrenheit under "Unit"; the choice applies immediately and is remembered. Besides the default dashboard there are four large-text layouts: Simple (CPU temperature + load), CPU + GPU (temperature + load of each), Temperatures (CPU and GPU temperature) and Clock (the time, with CPU / GPU temperature below);
+- tick "Rotate automatically" to cycle through all layouts in menu order; "Rotation interval" offers 10 s / 30 s (default) / 1 min / 5 min. Picking a layout under "Display" while rotating jumps to it and the rotation continues from there;
+- turn the full-screen background image / GIF of the large-text layouts on or off with "Background in large-text layouts" (the background is dimmed, and the digits have an outline and a shadow);
+- enable or disable "start at login";
+- retry after a connection failure;
+- exit and release the USB interface.
 
-## 配置
+### Upgrading
 
-程序固定读取 `LoopPanel.exe` 旁的 `looppanel.toml`。相对的背景、模板和字体路径都以该配置文件目录为基准。
+Exit the old tray instance before extracting the new release. Keep a backup of your configuration, custom templates, and backgrounds; copy your settings into the new directory as needed. The bundled dashboard has been updated for temperature-unit selection. Re-enable start at login from the new executable if its path has changed.
+
+An already-installed temperature service is reused; it is not automatically replaced during an application update.
+
+## Configuration
+
+The program always reads `looppanel.toml` next to `LoopPanel.exe`. Relative background, template, and font paths are resolved against the directory of this configuration file.
 
 ```toml
 background = "samples/aurora-circuit.jpg"
@@ -117,23 +126,25 @@ show_clock = false
 show_sensors = true
 ```
 
-- `background`：PNG、JPEG 或 GIF；默认使用随包的 `aurora-circuit.jpg`，还可直接切换到 `liquid-alloy.jpg` 或 `orbital-glass.jpg`；省略时使用内置动效；
-- `template`：MiniJinja SVG 模板；
-- `font`：仅加载这一份本地 TTF/TTC 字体；
-- `fps`：1–30，作为内置动效和 GIF 的帧率上限；
-- `sensor_interval_ms`：最小 250 ms；默认模板按 1 Hz 更新硬件数据；
-- `brightness`：0.05–1.0；
-- `show_clock`、`show_sensors`：供模板判断，也控制对应采样与刷新。
+- `background`: PNG, JPEG, or GIF; the bundled `aurora-circuit.jpg` is used by default, and you can also switch directly to `liquid-alloy.jpg` or `orbital-glass.jpg`; if omitted, the built-in animation is used;
+- `template`: the MiniJinja SVG template;
+- `font`: only this one local TTF/TTC font is loaded;
+- `fps`: 1–30, the frame rate upper limit for the built-in animation and GIFs;
+- `sensor_interval_ms`: minimum 250 ms; the default template updates hardware data at 1 Hz;
+- `brightness`: 0.05–1.0;
+- `show_clock`, `show_sensors`: for the template to check; they also control the corresponding sampling and refresh.
 
-背景会保持比例放进中央 480×270 区域；默认模板在上下区域绘制信息。GIF 最多 120 帧并在启动时解码，以控制常驻内存。官方 JONSBO 素材不包含在本仓库中。
+The background is fitted into the central 480×270 area with its aspect ratio preserved; the default template draws information in the areas above and below. GIFs are limited to 120 frames and are decoded at startup to limit resident memory. Official JONSBO assets are not included in this repository.
 
-修改配置或模板后，在托盘菜单选择“重新载入设置”即可生效，不需要退出程序；新内容有错误时会提示原因并保留当前画面。
+After changing the configuration or template, choose "Reload settings" from the tray menu to apply it without exiting; if the new content has an error, the reason is shown and the current display is kept.
 
-随包配置文件里的注释会在启动时换成 Windows 显示语言（简体中文、韩文，其余语言为英文）；自己添加的注释和所有配置值不会被改动。
+The comments that ship in the configuration file are rewritten at startup in the Windows display language (Simplified Chinese, Korean, or English for everything else); comments you add yourself and all settings are left untouched.
 
-## 模板语法
+Animation scheduling now preserves the intended cadence. With `fps=30`, two 60-second runs of the built-in animation on the validation machine averaged 30.00 FPS; GIFs retain their own source timing. See [measurements](docs/ANIMATION_FRAME_PACING.md).
 
-模板必须生成有效的 480×480 SVG。LoopPanel 使用严格未定义变量检查和 XML 自动转义；拼错字段会直接报错，而不是静默输出空内容。
+## Template Syntax
+
+A template must produce a valid 480×480 SVG. LoopPanel uses strict undefined-variable checking and XML auto-escaping; a misspelled field causes an error instead of silently producing empty output.
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">
@@ -147,26 +158,26 @@ show_sensors = true
 </svg>
 ```
 
-模板可以使用条件、循环和格式化过滤器。缺失硬件值为 `none`。精确的上下文结构、字段、示例和音频频谱标记规则见[模板指南](docs/TEMPLATES.md)。默认模板只是一个可编辑示例，不是程序固定布局。
+Templates can use conditionals, loops, and formatting filters. Missing hardware values are `none`. For the exact context structure, fields, examples, and audio spectrum marker rules, see the [template guide](docs/TEMPLATES.md). The default template is only an editable example, not a fixed layout of the program.
 
-## 技术栈
+## Tech Stack
 
-- Rust 2024 edition；实测工具链 Rust 1.97.1；
-- `x86_64-pc-windows-gnullvm`、`rust-lld`、`+crt-static`、Thin LTO；
-- Win32、SetupAPI、HID Feature Report 与 `libusb0` bulk OUT；
-- MiniJinja 2.21 + resvg/usvg/tiny-skia；
-- `image` 解码 PNG、JPEG 与 GIF；
-- PDH Processor Utility、Windows CPU Set、NT per-core busy times、PowrProf、GlobalMemoryStatusEx；
-- NVIDIA 驱动自带 NVML，或 AMD 驱动自带 ADL；
-- IP Helper API、PDH；
-- WASAPI loopback + 自包含 radix-2 FFT；
-- PawnIO 2.x + 官方 IntelMSR 模块（Intel Package 温度）或 AMDFamily17 模块（AMD Tctl/Tdie 温度）。
+- Rust 2024 edition; tested toolchain Rust 1.99.1;
+- `x86_64-pc-windows-gnullvm`, `rust-lld`, `+crt-static`, Thin LTO;
+- Win32, SetupAPI, HID Feature Report, and `libusb0` bulk OUT;
+- MiniJinja 2.21 + resvg/usvg/tiny-skia;
+- `image` for decoding PNG, JPEG, and GIF;
+- PDH Processor Utility, Windows CPU Set, NT per-core busy times, PowrProf, GlobalMemoryStatusEx;
+- NVML bundled with the NVIDIA driver, or ADL bundled with the AMD driver;
+- IP Helper API, PDH;
+- WASAPI loopback + a self-contained radix-2 FFT;
+- PawnIO 2.x + the official IntelMSR module (Intel Package temperature) or AMDFamily17 module (AMD Tctl/Tdie temperature).
 
-详细数据流和模块分工见[架构说明](docs/ARCHITECTURE.md)。
+For the detailed data flow and module responsibilities, see the [architecture overview](docs/ARCHITECTURE.md).
 
-## 构建
+## Build
 
-项目默认目标由 `.cargo/config.toml` 设为 `x86_64-pc-windows-gnullvm`：
+The default project target is set to `x86_64-pc-windows-gnullvm` in `.cargo/config.toml`:
 
 ```powershell
 cargo fmt --all -- --check
@@ -175,24 +186,24 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo build --release --bins --locked
 ```
 
-只生成两个程序：
+Only two programs are produced:
 
-- `looppanel.exe`：无控制台窗口的 GUI 主程序，发布时命名为 `LoopPanel.exe`；
-- `looppanel-temperature-service.exe`：主程序在首次启动时内部调用的服务程序，不是用户启动入口。
+- `looppanel.exe`: the GUI main program without a console window, named `LoopPanel.exe` when released;
+- `looppanel-temperature-service.exe`: the service program that the main program calls internally on first launch; it is not a user entry point.
 
-构建目录会同时生成 `dashboard.svg.jinja`，它必须与 `LoopPanel.exe` 保持同目录，除非 `looppanel.toml` 指定了其他模板路径。
+The build directory also gets `dashboard.svg.jinja`, which must stay in the same directory as `LoopPanel.exe` unless `looppanel.toml` specifies another template path.
 
-图标的矢量源文件位于 `assets/looppanel-icon.svg`；同目录中的透明 PNG 与多尺寸 ICO 是发布用派生资源。主程序直接嵌入 ICO 作为托盘图标。
+The vector source of the icon is `assets/looppanel-icon.svg`; the transparent PNG and multi-size ICO in the same directory are derived release assets. The main program embeds the ICO directly as the tray icon.
 
-## 安全边界
+## Safety Boundaries
 
-- 双击主程序可能访问受支持的 USB 屏幕；测试或审阅代码时不要把启动程序当作只读检查；
-- 发现 JONSBO-AIO 或 LCD Fusion 正在运行，或已有另一个 LoopPanel 实例时拒绝写屏；
-- HID、SetupAPI、`libusb0.dll`、`nvml.dll` 与 `atiadlxx.dll` 只从 Windows 系统目录加载；
-- 显示路径没有固件、EEPROM、USB 描述符或未知命令写入功能；
-- CPU 温度服务只接受固定采样请求，不接受任意 MSR/SMN 地址或写操作；AMD 路径由官方模块向 SMN 索引寄存器写入固定的温度寄存器地址再读出数据，期间持有 `Global\Access_PCI` 互斥量；
-- 当前二进制尚未做 Authenticode 签名，公开发布前应完成代码签名和 Windows 版本资源。
+- Double-clicking the main program may access a supported USB display; when testing or reviewing code, do not treat launching the program as a read-only check;
+- Writing to the display is refused when JONSBO-AIO or LCD Fusion is running, or another LoopPanel instance already exists;
+- HID, SetupAPI, `libusb0.dll`, `nvml.dll`, and `atiadlxx.dll` are loaded only from the Windows system directory;
+- The display path has no capability to write firmware, EEPROM, USB descriptors, or unknown commands;
+- The CPU temperature service accepts only fixed sampling requests, not arbitrary MSR/SMN addresses or write operations; on the AMD path, the official module writes a fixed temperature register address to the SMN index register and then reads the data back, holding the `Global\Access_PCI` mutex during this;
+- The release binaries are currently unsigned.
 
-## 为其他屏幕增加支持
+## Adding Support for Other Displays
 
-不要通过改分辨率或复用 VID/PID 猜测兼容性。每一种新屏幕都需要描述符、官方软件启动抓包、帧结构、颜色方向、分块/触发和保活实测。完整流程、代码落点和验收清单见[设备迁移指南](docs/DEVICE_PORTING.md)。
+Do not guess compatibility by changing the resolution or reusing a VID/PID. Every new display requires measurement of its descriptors, a startup capture of the official software, frame structure, color orientation, chunking/trigger, and keep-alive behavior. For the full process, code locations, and acceptance checklist, see the [device porting guide](docs/DEVICE_PORTING.md).
