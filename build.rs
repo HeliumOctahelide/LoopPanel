@@ -2,10 +2,14 @@ use std::{env, fs, path::PathBuf};
 
 const RT_ICON: u16 = 3;
 const RT_GROUP_ICON: u16 = 14;
+const RT_MANIFEST: u16 = 24;
+/// `CREATEPROCESS_MANIFEST_RESOURCE_ID`：进程启动时系统读取的清单资源编号。
+const MANIFEST_ID: u16 = 1;
 const LANGUAGE_EN_US: u16 = 0x0409;
 
 fn main() {
     println!("cargo:rerun-if-changed=assets/looppanel.ico");
+    println!("cargo:rerun-if-changed=assets/looppanel.manifest");
     println!("cargo:rerun-if-changed=dashboard.svg.jinja");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
@@ -13,7 +17,17 @@ fn main() {
 
     copy_default_template();
     let icon = fs::read("assets/looppanel.ico").expect("failed to read LoopPanel icon");
-    let resource = icon_resource(&icon);
+    let mut resource = icon_resource(&icon);
+    // 清单声明 DPI 感知：否则系统按 96 DPI 绘制托盘菜单再拉伸位图，高缩放下文字发虚。
+    let manifest =
+        fs::read("assets/looppanel.manifest").expect("failed to read LoopPanel manifest");
+    write_resource(
+        &mut resource,
+        RT_MANIFEST,
+        MANIFEST_ID,
+        LANGUAGE_EN_US,
+        &manifest,
+    );
     let output =
         PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is not set")).join("looppanel.res");
     fs::write(&output, resource).expect("failed to write Windows icon resource");
